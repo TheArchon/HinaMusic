@@ -470,28 +470,50 @@ class Call(PyTgCalls):
                         related = await YouTube.get_related_videos(vidid)
                         if not related:
                             return await _clear_(chat_id)
-                        video_id = random.choice(related)
-                        try:
-                            details, track_id = await YouTube.track(video_id, True)
-                            if not details.get("title"):
-                                raise Exception("no details")
-                        except:
-                            raise Exception("fetch fail")
+                        # Try related songs until a playable one is found.
+                        random.shuffle(related)
 
                         from AloneMusic.utils.stream.queue import put_queue
-                        await put_queue(
-                            chat_id,
-                            popped["chat_id"],
-                            f"vid_{video_id}",
-                            details["title"],
-                            details["duration_min"],
-                            popped["by"],
-                            video_id,
-                            popped["user_id"],
-                            popped["streamtype"],
-                            forceplay=True,
-                        )
-                        # Re-fetch check because put_queue added a song
+
+                        autoplay_added = False
+
+                        for video_id in related:
+                            try:
+                                details, track_id = await YouTube.track(
+                                    video_id, True
+                                )
+
+                                if not details or not details.get("title"):
+                                    continue
+
+                                await put_queue(
+                                    chat_id,
+                                    popped["chat_id"],
+                                    f"vid_{video_id}",
+                                    details["title"],
+                                    details["duration_min"],
+                                    popped["by"],
+                                    video_id,
+                                    popped["user_id"],
+                                    popped["streamtype"],
+                                    forceplay=True,
+                                )
+
+                                autoplay_added = True
+                                break
+
+                            except Exception as e:
+                                LOGGER(__name__).warning(
+                                    f"Autoplay failed for {video_id}: {e}"
+                                )
+                                continue
+
+                        if not autoplay_added:
+                            raise Exception(
+                                "No playable related song found"
+                            )
+
+                        # Re-fetch check because put_queue added a song.
                         check = db.get(chat_id)
                     except:
                         pass
@@ -790,3 +812,4 @@ class Call(PyTgCalls):
 
 
 Alone = Call()
+  
