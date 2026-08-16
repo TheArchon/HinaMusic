@@ -60,7 +60,7 @@ def private_panel(_):
             ),
             InlineKeyboardButton(
                 text="⌯ ᴘʀɪᴠᴀᴄʏ ⌯",
-                url="https://graph.org/AloneMusic-04-12-2"
+                url="https://t.me/Queenhoneybot"
             ),
         ],
     ]
