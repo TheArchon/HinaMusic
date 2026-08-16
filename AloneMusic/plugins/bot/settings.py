@@ -67,7 +67,7 @@ async def gib_repo_callback(_, callback_query):
                 [
                     InlineKeyboardButton(
                         text="⌯ ғᴏʀᴋ ʀᴇᴘᴏ ⌯",
-                        url="https://github.com/TheAloneTeam/AloneMusic/fork"
+                        url="https://t.me/hot_dpz_stor"
                     ),
                     InlineKeyboardButton(text="⌯ 💌 ʏᴛ-ʌᴘɪ ⌯", callback_data="bot_info_data"),
                 ],
