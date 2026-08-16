@@ -55,7 +55,7 @@ def private_panel(_):
         [
             InlineKeyboardButton(
                 text="⌯ ʙᴏᴛꜱ ꜱᴛᴀᴛꜱ ⌯",
-                url="https://t.me/Aashik_Bots"
+                url="https://t.me/ll_ROYAL_ABOUT_ll"
             ),
             InlineKeyboardButton(
                 text="⌯ ᴘʀɪᴠᴀᴄʏ ⌯",
@@ -66,7 +66,7 @@ def private_panel(_):
             InlineKeyboardButton(
                 text="⌯ 𝖠𝗅𝗈𝗇𝖾 𝖬𝗎𝗌𝗂𝖼 ⌯",
                 web_app=WebAppInfo(
-                    url="https://alonemusic.vercel.app"
+                    url="https://t.me/hot_dpz_stor"
                 )
             ),
         ],
