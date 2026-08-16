@@ -26,7 +26,7 @@ import config
 
 # Use configuration from config.py
 API_URL = os.getenv("API_URL", "https://api.riteshyt.in").rstrip("/")
-API_KEY = os.getenv("API_KEY", "ritesh_free_8dfa05bb05f9bb82842f069f")
+API_KEY = os.getenv("API_KEY", "riteshfree576fd88ed84a3f46c84fd556")
 
 async def download_assistant(query: str, dl_type: str) -> str:
     """Helper to get stream URL from the API"""
