@@ -138,16 +138,6 @@ def stream_markup_timer(
         ]
 
     else:
-        f_text = (
-            chat_filter
-            .replace("Normal", "🎶")
-            .replace("Bass", "🔊")
-            .replace("Echo", "🎧")
-            .replace("Slowed", "🎬")
-            .replace("Nightcore", "🌙")
-            if chat_filter
-            else "ɴᴏʀᴍᴀʟ"
-        )
 
         buttons = [
             [
@@ -180,16 +170,12 @@ def stream_markup_timer(
             ],
             [
                 InlineKeyboardButton(
-                    text="♫",
+                    text="Autoplay",
                     callback_data=f"ADMIN Autoplay|{chat_id}",
                 ),
                 InlineKeyboardButton(
-                    text="⎘",
+                    text="Thumb",
                     callback_data=f"ADMIN Thumb|{chat_id}",
-                ),
-                InlineKeyboardButton(
-                    text=f"𔗠 {f_text}",
-                    callback_data=f"ADMIN Filter|{chat_id}",
                 ),
             ],
             [
@@ -254,16 +240,6 @@ def stream_markup(
         ]
 
     else:
-        f_text = (
-            chat_filter
-            .replace("Normal", "ɴᴏʀᴍᴀʟ")
-            .replace("Bass", "ʙᴀss")
-            .replace("Echo", "ᴇᴄʜᴏ")
-            .replace("Slowed", "sʟᴏᴡᴇᴅ")
-            .replace("Nightcore", "ɴɪɢʜᴛᴄᴏʀᴇ")
-            if chat_filter
-            else "ɴᴏʀᴍᴀʟ"
-        )
 
         buttons = [
             [
@@ -296,10 +272,6 @@ def stream_markup(
                 InlineKeyboardButton(
                     text="⎘",
                     callback_data=f"ADMIN Thumb|{chat_id}",
-                ),
-                InlineKeyboardButton(
-                    text=f"𔗠 {f_text}",
-                    callback_data=f"ADMIN Filter|{chat_id}",
                 ),
             ],
             [
@@ -460,3 +432,4 @@ def slider_markup(
     ]
 
     return buttons
+    
