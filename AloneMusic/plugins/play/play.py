@@ -107,7 +107,7 @@ async def play_commnd(
             "🫧",
         ]
     )
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         mystic = await message.reply_photo(
             photo=config.STREAM_IMG_URL,
             caption=_["play_2"].format(channel) if channel else _["play_1"],
@@ -448,7 +448,7 @@ async def play_commnd(
                 "f" if fplay else "d",
                 await is_thumb_on(chat_id),
             )
-            if await is_thumb_on(chat_id):
+            if False:  # thumbnails disabled
                 await mystic.edit_media(
                     media=InputMediaPhoto(img, caption=cap),
                     reply_markup=InlineKeyboardMarkup(buttons),
@@ -472,7 +472,7 @@ async def play_commnd(
                     details["title"].title(),
                     details["duration_min"],
                 )
-                if await is_thumb_on(chat_id):
+                if False:  # thumbnails disabled
                     await mystic.edit_media(
                         media=InputMediaPhoto(details["thumb"], caption=cap),
                         reply_markup=InlineKeyboardMarkup(buttons),
@@ -489,7 +489,7 @@ async def play_commnd(
                     "f" if fplay else "d",
                     await is_thumb_on(chat_id),
                 )
-                if await is_thumb_on(chat_id):
+                if False:  # thumbnails disabled
                     await mystic.edit_media(
                         media=InputMediaPhoto(img, caption=cap),
                         reply_markup=InlineKeyboardMarkup(buttons),
@@ -520,7 +520,7 @@ async def play_music(client, CallbackQuery, _):
     except:
         pass
 
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         try:
             mystic = await CallbackQuery.edit_message_media(
                 media=InputMediaPhoto(
@@ -627,7 +627,7 @@ async def play_playlists_command(client, CallbackQuery, _):
     except:
         pass
 
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         try:
             mystic = await CallbackQuery.edit_message_media(
                 media=InputMediaPhoto(
@@ -723,7 +723,7 @@ async def music_thumb_cb(client, CallbackQuery, _):
         return
 
     from AloneMusic.utils.database import thumb_off, thumb_on
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         await thumb_off(chat_id)
     else:
         await thumb_on(chat_id)
@@ -736,10 +736,22 @@ async def music_thumb_cb(client, CallbackQuery, _):
     buttons = track_markup(_, vidid, user_id, channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_10"].format(details["title"], details["duration_min"])
 
-    return await CallbackQuery.edit_message_text(
-        text=cap,
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    if False:  # thumbnails disabled
+        try:
+            return await CallbackQuery.edit_message_media(
+                media=InputMediaPhoto(details["thumb"], caption=cap),
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        try:
+            return await CallbackQuery.edit_message_text(
+                text=cap,
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @app.on_callback_query(filters.regex("PlaylistThumb") & ~BANNED_USERS)
@@ -759,7 +771,7 @@ async def playlist_thumb_cb(client, CallbackQuery, _):
         return
 
     from AloneMusic.utils.database import thumb_off, thumb_on
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         await thumb_off(chat_id)
     else:
         await thumb_on(chat_id)
@@ -767,10 +779,22 @@ async def playlist_thumb_cb(client, CallbackQuery, _):
     buttons = playlist_markup(_, vidid, user_id, ptype, channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_11"].format(app.mention, CallbackQuery.from_user.mention) # Simplified
 
-    return await CallbackQuery.edit_message_text(
-        text=cap,
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    if False:  # thumbnails disabled
+        try:
+            return await CallbackQuery.edit_message_media(
+                media=InputMediaPhoto(config.STREAM_IMG_URL, caption=cap),
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        try:
+            return await CallbackQuery.edit_message_text(
+                text=cap,
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @app.on_callback_query(filters.regex("LiveThumb") & ~BANNED_USERS)
@@ -790,17 +814,29 @@ async def live_thumb_cb(client, CallbackQuery, _):
         return
 
     from AloneMusic.utils.database import thumb_off, thumb_on
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         await thumb_off(chat_id)
     else:
         await thumb_on(chat_id)
 
     buttons = livestream_markup(_, vidid, user_id, mode, channel, fplay, await is_thumb_on(chat_id))
 
-    return await CallbackQuery.edit_message_text(
-        text=_["play_13"],
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    if False:  # thumbnails disabled
+        try:
+            return await CallbackQuery.edit_message_media(
+                media=InputMediaPhoto(config.STREAM_IMG_URL, caption=_["play_13"]),
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        try:
+            return await CallbackQuery.edit_message_text(
+                text=_["play_13"],
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @app.on_callback_query(filters.regex("SliderThumb") & ~BANNED_USERS)
@@ -820,7 +856,7 @@ async def slider_thumb_cb(client, CallbackQuery, _):
         return
 
     from AloneMusic.utils.database import thumb_off, thumb_on
-    if await is_thumb_on(chat_id):
+    if False:  # thumbnails disabled
         await thumb_off(chat_id)
     else:
         await thumb_on(chat_id)
@@ -833,10 +869,22 @@ async def slider_thumb_cb(client, CallbackQuery, _):
     buttons = slider_markup(_, vidid, user_id, query, int(query_type), channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_10"].format(title.title(), duration_min)
 
-    return await CallbackQuery.edit_message_text(
-        text=cap,
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
+    if False:  # thumbnails disabled
+        try:
+            return await CallbackQuery.edit_message_media(
+                media=InputMediaPhoto(thumbnail, caption=cap),
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        try:
+            return await CallbackQuery.edit_message_text(
+                text=cap,
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+        except:
+            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @app.on_callback_query(filters.regex("slider") & ~BANNED_USERS)
@@ -892,5 +940,5 @@ async def slider_queries(client, CallbackQuery, _):
         return await CallbackQuery.edit_message_text(
             text=_["play_10"].format(title.title(), duration_min),
             reply_markup=InlineKeyboardMarkup(buttons),
-  )
-                      
+      )
+  
