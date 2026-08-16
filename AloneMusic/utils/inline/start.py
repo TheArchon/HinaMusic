@@ -7,7 +7,7 @@
 #
 # All rights reserved.
 
-from pyrogram.types import InlineKeyboardButton, WebAppInfo
+from pyrogram.types import InlineKeyboardButton
 
 import config
 from AloneMusic import app
@@ -17,15 +17,16 @@ def start_panel(_):
     buttons = [
         [
             InlineKeyboardButton(
-                text=_["S_B_1"], url=f"https://t.me/{app.username}?startgroup=true"
+                text=_["S_B_1"],
+                url=f"https://t.me/{app.username}?startgroup=true"
             ),
-            InlineKeyboardButton(text=_["S_B_2"], url=config.SUPPORT_CHAT),
+            InlineKeyboardButton(
+                text=_["S_B_2"],
+                url=config.SUPPORT_CHAT
+            ),
         ],
     ]
     return buttons
-
-
-from pyrogram.types import InlineKeyboardButton, WebAppInfo
 
 
 def private_panel(_):
@@ -33,7 +34,7 @@ def private_panel(_):
         [
             InlineKeyboardButton(
                 text=_["S_B_3"],
-                url=f"https://t.me/{app.username}?startgroup=true",
+                url=f"https://t.me/{app.username}?startgroup=true"
             )
         ],
         [
@@ -62,13 +63,6 @@ def private_panel(_):
                 url="https://graph.org/AloneMusic-04-12-2"
             ),
         ],
-        [
-            InlineKeyboardButton(
-                text="⌯ 𝖠𝗅𝗈𝗇𝖾 𝖬𝗎𝗌𝗂𝖼 ⌯",
-                web_app=WebAppInfo(
-                    url="https://t.me/hot_dpz_stor"
-                )
-            ),
-        ],
     ]
+
     return buttons
