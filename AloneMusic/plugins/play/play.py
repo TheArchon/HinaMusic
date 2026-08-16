@@ -736,22 +736,10 @@ async def music_thumb_cb(client, CallbackQuery, _):
     buttons = track_markup(_, vidid, user_id, channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_10"].format(details["title"], details["duration_min"])
 
-    if await is_thumb_on(chat_id):
-        try:
-            return await CallbackQuery.edit_message_media(
-                media=InputMediaPhoto(details["thumb"], caption=cap),
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    else:
-        try:
-            return await CallbackQuery.edit_message_text(
-                text=cap,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    return await CallbackQuery.edit_message_text(
+        text=cap,
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 
 @app.on_callback_query(filters.regex("PlaylistThumb") & ~BANNED_USERS)
@@ -779,22 +767,10 @@ async def playlist_thumb_cb(client, CallbackQuery, _):
     buttons = playlist_markup(_, vidid, user_id, ptype, channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_11"].format(app.mention, CallbackQuery.from_user.mention) # Simplified
 
-    if await is_thumb_on(chat_id):
-        try:
-            return await CallbackQuery.edit_message_media(
-                media=InputMediaPhoto(config.STREAM_IMG_URL, caption=cap),
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    else:
-        try:
-            return await CallbackQuery.edit_message_text(
-                text=cap,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    return await CallbackQuery.edit_message_text(
+        text=cap,
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 
 @app.on_callback_query(filters.regex("LiveThumb") & ~BANNED_USERS)
@@ -821,22 +797,10 @@ async def live_thumb_cb(client, CallbackQuery, _):
 
     buttons = livestream_markup(_, vidid, user_id, mode, channel, fplay, await is_thumb_on(chat_id))
 
-    if await is_thumb_on(chat_id):
-        try:
-            return await CallbackQuery.edit_message_media(
-                media=InputMediaPhoto(config.STREAM_IMG_URL, caption=_["play_13"]),
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    else:
-        try:
-            return await CallbackQuery.edit_message_text(
-                text=_["play_13"],
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    return await CallbackQuery.edit_message_text(
+        text=_["play_13"],
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 
 @app.on_callback_query(filters.regex("SliderThumb") & ~BANNED_USERS)
@@ -869,22 +833,10 @@ async def slider_thumb_cb(client, CallbackQuery, _):
     buttons = slider_markup(_, vidid, user_id, query, int(query_type), channel, fplay, await is_thumb_on(chat_id))
     cap = _["play_10"].format(title.title(), duration_min)
 
-    if await is_thumb_on(chat_id):
-        try:
-            return await CallbackQuery.edit_message_media(
-                media=InputMediaPhoto(thumbnail, caption=cap),
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    else:
-        try:
-            return await CallbackQuery.edit_message_text(
-                text=cap,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-        except:
-            return await CallbackQuery.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    return await CallbackQuery.edit_message_text(
+        text=cap,
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
 
 @app.on_callback_query(filters.regex("slider") & ~BANNED_USERS)
@@ -922,15 +874,9 @@ async def slider_queries(client, CallbackQuery, _):
             pass
         title, duration_min, thumbnail, vidid = await YouTube.slider(query, query_type)
         buttons = slider_markup(_, vidid, user_id, query, query_type, cplay, fplay, await is_thumb_on(chat_id))
-        med = InputMediaPhoto(
-            media=thumbnail,
-            caption=_["play_10"].format(
-                title.title(),
-                duration_min,
-            ),
-        )
-        return await CallbackQuery.edit_message_media(
-            media=med, reply_markup=InlineKeyboardMarkup(buttons)
+        return await CallbackQuery.edit_message_text(
+            text=_["play_10"].format(title.title(), duration_min),
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
     if what == "B":
         if rtype == 0:
@@ -943,13 +889,8 @@ async def slider_queries(client, CallbackQuery, _):
             pass
         title, duration_min, thumbnail, vidid = await YouTube.slider(query, query_type)
         buttons = slider_markup(_, vidid, user_id, query, query_type, cplay, fplay, await is_thumb_on(chat_id))
-        med = InputMediaPhoto(
-            media=thumbnail,
-            caption=_["play_10"].format(
-                title.title(),
-                duration_min,
-            ),
-        )
-        return await CallbackQuery.edit_message_media(
-            media=med, reply_markup=InlineKeyboardMarkup(buttons)
-        )
+        return await CallbackQuery.edit_message_text(
+            text=_["play_10"].format(title.title(), duration_min),
+            reply_markup=InlineKeyboardMarkup(buttons),
+  )
+                      
