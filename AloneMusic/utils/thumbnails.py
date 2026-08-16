@@ -211,7 +211,7 @@ async def get_thumb(videoid, user_name=None, next_title=None):
         draw.text((bar_x + bar_width - w_dur, bar_y + 20), text=duration, fill="#b3b3b3", font=font_time)
         
         # Watermark
-        draw.text((1280 - 180, 40), text="Alone Music", fill=(255, 255, 255, 150), font=font_watermark)
+        draw.text((1280 - 180, 40), text="Meera Music", fill=(255, 255, 255, 150), font=font_watermark)
 
         try:
             os.remove(f"cache/thumb{videoid}.png")
