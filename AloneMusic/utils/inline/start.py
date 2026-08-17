@@ -1,11 +1,13 @@
-# ===========================================================
-# ©️ 2025-26 All Rights Reserved
 #
-# This source code is under MIT License 📜
-# ===========================================================
+# Copyright (C) 2021-2022 by TheAloneteam@Github, < https://github.com/TheAloneTeam >.
+#
+# This file is part of < https://github.com/TheAloneTeam/AloneMusic > project,
+# and is released under the "GNU v3.0 License Agreement".
+# Please see < https://github.com/TheAloneTeam/AloneMusic/blob/master/LICENSE >
+#
+# All rights reserved.
 
 from pyrogram.types import InlineKeyboardButton
-from pyrogram.enums import ButtonStyle
 
 import config
 from AloneMusic import app
@@ -16,17 +18,14 @@ def start_panel(_):
         [
             InlineKeyboardButton(
                 text=_["S_B_1"],
-                url=f"https://t.me/{app.username}?startgroup=true",
-                style=ButtonStyle.PRIMARY,
+                url=f"https://t.me/{app.username}?startgroup=true"
             ),
             InlineKeyboardButton(
                 text=_["S_B_2"],
-                url=config.SUPPORT_CHAT,
-                style=ButtonStyle.SUCCESS,
+                url=config.SUPPORT_CHAT
             ),
         ],
     ]
-
     return buttons
 
 
@@ -35,39 +34,33 @@ def private_panel(_):
         [
             InlineKeyboardButton(
                 text=_["S_B_3"],
-                url=f"https://t.me/{app.username}?startgroup=true",
-                style=ButtonStyle.PRIMARY,
+                url=f"https://t.me/{app.username}?startgroup=true"
             )
         ],
         [
             InlineKeyboardButton(
                 text=_["S_B_4"],
-                callback_data="settings_back_helper",
-                style=ButtonStyle.DANGER,
+                callback_data="settings_back_helper"
             ),
         ],
         [
             InlineKeyboardButton(
                 text=_["S_B_2"],
-                callback_data="Alone_Music",
-                style=ButtonStyle.SUCCESS,
+                callback_data="Alone_Music"
             ),
             InlineKeyboardButton(
                 text="⌯ ꜱᴏᴜʀᴄᴇ ⌯",
-                callback_data="gib_source",
-                style=ButtonStyle.PRIMARY,
+                callback_data="gib_source"
             ),
         ],
         [
             InlineKeyboardButton(
                 text="⌯ ʙᴏᴛꜱ ꜱᴛᴀᴛꜱ ⌯",
-                url="https://t.me/ll_ROYAL_ABOUT_ll",
-                style=ButtonStyle.SUCCESS,
+                url="https://t.me/ll_ROYAL_ABOUT_ll"
             ),
             InlineKeyboardButton(
                 text="⌯ ᴘʀɪᴠᴀᴄʏ ⌯",
-                url="https://graph.org/AloneMusic-04-12-2",
-                style=ButtonStyle.DANGER,
+                url="https://graph.org/AloneMusic-04-12-2"
             ),
         ],
     ]
