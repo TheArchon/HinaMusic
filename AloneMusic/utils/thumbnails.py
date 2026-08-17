@@ -2,7 +2,15 @@ import os
 import re
 import aiofiles
 import aiohttp
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageEnhance,
+    ImageFilter,
+    ImageFont,
+)
+
 from py_yt import VideosSearch
 from config import YOUTUBE_IMG_URL
 
@@ -14,41 +22,42 @@ from config import YOUTUBE_IMG_URL
 CACHE_DIR = "cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-PANEL_W, PANEL_H = 763, 545
-PANEL_X = (1280 - PANEL_W) // 2
-PANEL_Y = 88
+CANVAS_W, CANVAS_H = 1280, 720
 
-# Black glass panel
-TRANSPARENCY = 210
-INNER_OFFSET = 36
-
-# Thumbnail
-THUMB_W, THUMB_H = 542, 273
-THUMB_X = PANEL_X + (PANEL_W - THUMB_W) // 2
-THUMB_Y = PANEL_Y + INNER_OFFSET
-
-# Text
-TITLE_X = 377
-META_X = 377
-TITLE_Y = THUMB_Y + THUMB_H + 10
-META_Y = TITLE_Y + 45
 
 # ==========================================================
-# LONG PROGRESS BAR
+# BIG THUMBNAIL
 # ==========================================================
 
-BAR_X = 350
-BAR_Y = META_Y + 45
+THUMB_W = 1180
+THUMB_H = 545
 
-BAR_RED_LEN = 330
-BAR_TOTAL_LEN = 560
+THUMB_X = (CANVAS_W - THUMB_W) // 2
+THUMB_Y = 18
 
-# Icons
-ICONS_W, ICONS_H = 415, 45
-ICONS_X = PANEL_X + (PANEL_W - ICONS_W) // 2
-ICONS_Y = BAR_Y + 48
 
-MAX_TITLE_WIDTH = 580
+# ==========================================================
+# TEXT
+# ==========================================================
+
+TITLE_X = 50
+TITLE_Y = 578
+
+META_X = 50
+META_Y = 622
+
+MAX_TITLE_WIDTH = 850
+
+
+# ==========================================================
+# PROGRESS BAR
+# ==========================================================
+
+BAR_X = 50
+BAR_Y = 675
+
+BAR_TOTAL_LEN = 1180
+BAR_RED_LEN = 590
 
 
 # ==========================================================
@@ -67,8 +76,11 @@ def trim_to_width(
         return text
 
     for i in range(len(text) - 1, 0, -1):
-        if font.getlength(text[:i] + ellipsis) <= max_w:
-            return text[:i] + ellipsis
+
+        new_text = text[:i] + ellipsis
+
+        if font.getlength(new_text) <= max_w:
+            return new_text
 
     return ellipsis
 
@@ -81,15 +93,15 @@ async def get_thumb(videoid, user_id=None):
 
     cache_path = os.path.join(
         CACHE_DIR,
-        f"{videoid}_v5.png"
+        f"{videoid}_v6.png"
     )
 
     if os.path.exists(cache_path):
         return cache_path
 
-    # ------------------------------------------------------
-    # YouTube video data
-    # ------------------------------------------------------
+    # ======================================================
+    # YOUTUBE DATA
+    # ======================================================
 
     results = VideosSearch(
         f"https://www.youtube.com/watch?v={videoid}",
@@ -117,7 +129,7 @@ async def get_thumb(videoid, user_id=None):
                 "title",
                 "Unsupported Title"
             )
-        ).title()
+        ).strip()
 
         thumbnail = data.get(
             "thumbnails",
@@ -137,27 +149,33 @@ async def get_thumb(videoid, user_id=None):
             "Unknown Views"
         )
 
-    except Exception:
+    except Exception as e:
+
+        print(f"YouTube data error: {e}")
 
         title = "Unsupported Title"
         thumbnail = YOUTUBE_IMG_URL
         duration = None
         views = "Unknown Views"
 
-    # ------------------------------------------------------
-    # Duration
-    # ------------------------------------------------------
+    # ======================================================
+    # DURATION
+    # ======================================================
 
     is_live = (
         not duration
         or str(duration).strip().lower()
-        in {"", "live", "live now"}
+        in {
+            "",
+            "live",
+            "live now"
+        }
     )
 
     duration_text = (
         "Live"
         if is_live
-        else duration or "Unknown Mins"
+        else duration or "Unknown"
     )
 
     # ======================================================
@@ -175,108 +193,126 @@ async def get_thumb(videoid, user_id=None):
 
             async with session.get(thumbnail) as resp:
 
-                if resp.status == 200:
+                if resp.status != 200:
+                    return YOUTUBE_IMG_URL
 
-                    async with aiofiles.open(
-                        thumb_path,
-                        "wb"
-                    ) as f:
+                image_data = await resp.read()
 
-                        await f.write(
-                            await resp.read()
-                        )
+                async with aiofiles.open(
+                    thumb_path,
+                    "wb"
+                ) as f:
 
-    except Exception:
+                    await f.write(image_data)
 
+    except Exception as e:
+
+        print(f"Thumbnail download error: {e}")
         return YOUTUBE_IMG_URL
 
     # ======================================================
-    # CREATE BASE IMAGE
+    # OPEN IMAGE
     # ======================================================
 
     try:
 
-        base = (
+        original = (
             Image.open(thumb_path)
-            .resize((1280, 720))
-            .convert("RGBA")
+            .convert("RGB")
         )
 
-    except Exception:
+    except Exception as e:
 
+        print(f"Image open error: {e}")
         return YOUTUBE_IMG_URL
 
-    # ------------------------------------------------------
-    # Blurred background
-    # ------------------------------------------------------
+    # ======================================================
+    # CREATE 1280x720 CANVAS
+    # ======================================================
+
+    base = Image.new(
+        "RGB",
+        (CANVAS_W, CANVAS_H)
+    )
+
+    # ======================================================
+    # BLURRED BACKGROUND
+    # ======================================================
 
     bg = ImageEnhance.Brightness(
-        base.filter(
-            ImageFilter.BoxBlur(10)
+        original.resize(
+            (CANVAS_W, CANVAS_H),
+            Image.Resampling.LANCZOS
+        ).filter(
+            ImageFilter.GaussianBlur(18)
         )
-    ).enhance(0.6)
+    ).enhance(0.65)
+
+    base.paste(
+        bg,
+        (0, 0)
+    )
 
     # ======================================================
-    # BLACK FROSTED GLASS PANEL
+    # BIG THUMBNAIL
+    #
+    # BLACK PANEL REMOVED
     # ======================================================
 
-    panel_area = bg.crop(
-        (
-            PANEL_X,
-            PANEL_Y,
-            PANEL_X + PANEL_W,
-            PANEL_Y + PANEL_H
-        )
+    thumb = ImageOpsFit(
+        original,
+        (THUMB_W, THUMB_H)
     )
 
-    # BLACK instead of WHITE
-    overlay = Image.new(
-        "RGBA",
-        (PANEL_W, PANEL_H),
-        (0, 0, 0, TRANSPARENCY)
-    )
-
-    frosted = Image.alpha_composite(
-        panel_area,
-        overlay
-    )
-
-    # Rounded corners
-    mask = Image.new(
+    # Rounded corners only
+    tmask = Image.new(
         "L",
-        (PANEL_W, PANEL_H),
+        (THUMB_W, THUMB_H),
         0
     )
 
-    ImageDraw.Draw(mask).rounded_rectangle(
-        (0, 0, PANEL_W, PANEL_H),
-        50,
+    mask_draw = ImageDraw.Draw(tmask)
+
+    mask_draw.rounded_rectangle(
+        (
+            0,
+            0,
+            THUMB_W,
+            THUMB_H
+        ),
+        radius=24,
         fill=255
     )
 
-    bg.paste(
-        frosted,
-        (PANEL_X, PANEL_Y),
-        mask
+    base.paste(
+        thumb,
+        (
+            THUMB_X,
+            THUMB_Y
+        ),
+        tmask
     )
 
     # ======================================================
     # DRAW
     # ======================================================
 
-    draw = ImageDraw.Draw(bg)
+    draw = ImageDraw.Draw(base)
 
-    # Fonts
+    # ======================================================
+    # FONTS
+    # ======================================================
+
     try:
 
         title_font = ImageFont.truetype(
             "AloneMusic/assets/font2.ttf",
-            32
+            31
         )
 
         regular_font = ImageFont.truetype(
             "AloneMusic/assets/font.ttf",
-            18
+            19
         )
 
     except OSError:
@@ -285,51 +321,27 @@ async def get_thumb(videoid, user_id=None):
         regular_font = ImageFont.load_default()
 
     # ======================================================
-    # THUMBNAIL
+    # TITLE
     # ======================================================
 
-    thumb = base.resize(
-        (THUMB_W, THUMB_H)
+    title_text = trim_to_width(
+        title,
+        title_font,
+        MAX_TITLE_WIDTH
     )
-
-    tmask = Image.new(
-        "L",
-        thumb.size,
-        0
-    )
-
-    ImageDraw.Draw(tmask).rounded_rectangle(
-        (0, 0, THUMB_W, THUMB_H),
-        20,
-        fill=255
-    )
-
-    bg.paste(
-        thumb,
-        (THUMB_X, THUMB_Y),
-        tmask
-    )
-
-    # ======================================================
-    # TITLE - WHITE
-    # ======================================================
 
     draw.text(
         (
             TITLE_X,
             TITLE_Y
         ),
-        trim_to_width(
-            title,
-            title_font,
-            MAX_TITLE_WIDTH
-        ),
+        title_text,
         fill="white",
         font=title_font
     )
 
     # ======================================================
-    # META - WHITE
+    # META
     # ======================================================
 
     draw.text(
@@ -343,66 +355,69 @@ async def get_thumb(videoid, user_id=None):
     )
 
     # ======================================================
-    # LONG PROGRESS BAR
+    # PROGRESS BAR
     # ======================================================
 
+    # Gray background
+    draw.rounded_rectangle(
+        (
+            BAR_X,
+            BAR_Y,
+            BAR_X + BAR_TOTAL_LEN,
+            BAR_Y + 6
+        ),
+        radius=4,
+        fill=(180, 180, 180)
+    )
+
     # Red progress
-    draw.line(
-        [
-            (BAR_X, BAR_Y),
-            (
-                BAR_X + BAR_RED_LEN,
-                BAR_Y
-            )
-        ],
-        fill="red",
-        width=6
+    draw.rounded_rectangle(
+        (
+            BAR_X,
+            BAR_Y,
+            BAR_X + BAR_RED_LEN,
+            BAR_Y + 6
+        ),
+        radius=4,
+        fill=(255, 0, 0)
     )
 
-    # Gray remaining part
-    draw.line(
-        [
-            (
-                BAR_X + BAR_RED_LEN,
-                BAR_Y
-            ),
-            (
-                BAR_X + BAR_TOTAL_LEN,
-                BAR_Y
-            )
-        ],
-        fill="gray",
-        width=5
-    )
+    # ======================================================
+    # RED PROGRESS CIRCLE
+    # ======================================================
 
-    # Red progress circle
+    circle_x = BAR_X + BAR_RED_LEN
+    circle_y = BAR_Y + 3
+
     draw.ellipse(
-        [
-            (
-                BAR_X + BAR_RED_LEN - 7,
-                BAR_Y - 7
-            ),
-            (
-                BAR_X + BAR_RED_LEN + 7,
-                BAR_Y + 7
-            )
-        ],
-        fill="red"
+        (
+            circle_x - 10,
+            circle_y - 10,
+            circle_x + 10,
+            circle_y + 10
+        ),
+        fill=(255, 0, 0)
     )
 
     # ======================================================
     # TIME
     # ======================================================
 
+    time_y = BAR_Y + 12
+
     draw.text(
         (
             BAR_X,
-            BAR_Y + 15
+            time_y
         ),
         "00:00",
         fill="white",
         font=regular_font
     )
+
+    # ======================================================
+    # END TIME
+    # ======================================================
 
     end_text = (
         "Live"
@@ -418,55 +433,12 @@ async def get_thumb(videoid, user_id=None):
     draw.text(
         (
             BAR_X + BAR_TOTAL_LEN - end_width,
-            BAR_Y + 15
+            time_y
         ),
         end_text,
         fill="white",
         font=regular_font
     )
-
-    # ======================================================
-    # ICONS - WHITE
-    # ======================================================
-
-    icons_path = (
-        "VIVAANXMUSIC/assets/thumb/"
-        "play_icons.png"
-    )
-
-    if os.path.isfile(icons_path):
-
-        try:
-
-            ic = (
-                Image.open(icons_path)
-                .resize(
-                    (ICONS_W, ICONS_H)
-                )
-                .convert("RGBA")
-            )
-
-            r, g, b, a = ic.split()
-
-            # Convert icons to WHITE
-            white_ic = Image.merge(
-                "RGBA",
-                (
-                    r.point(lambda _: 255),
-                    g.point(lambda _: 255),
-                    b.point(lambda _: 255),
-                    a
-                )
-            )
-
-            bg.paste(
-                white_ic,
-                (ICONS_X, ICONS_Y),
-                white_ic
-            )
-
-        except Exception:
-            pass
 
     # ======================================================
     # CLEANUP
@@ -484,9 +456,62 @@ async def get_thumb(videoid, user_id=None):
     # SAVE
     # ======================================================
 
-    bg.save(
+    base.save(
         cache_path,
         "PNG"
     )
 
     return cache_path
+
+
+# ==========================================================
+# IMAGE FIT FUNCTION
+# ==========================================================
+
+def ImageOpsFit(image, size):
+
+    target_w, target_h = size
+
+    src_w, src_h = image.size
+
+    src_ratio = src_w / src_h
+    target_ratio = target_w / target_h
+
+    if src_ratio > target_ratio:
+
+        # Crop left/right
+        new_h = src_h
+        new_w = int(src_h * target_ratio)
+
+        left = (src_w - new_w) // 2
+
+        image = image.crop(
+            (
+                left,
+                0,
+                left + new_w,
+                src_h
+            )
+        )
+
+    else:
+
+        # Crop top/bottom
+        new_w = src_w
+        new_h = int(src_w / target_ratio)
+
+        top = (src_h - new_h) // 2
+
+        image = image.crop(
+            (
+                0,
+                top,
+                src_w,
+                top + new_h
+            )
+        )
+
+    return image.resize(
+        size,
+        Image.Resampling.LANCZOS
+        )
