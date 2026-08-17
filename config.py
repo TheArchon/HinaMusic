@@ -15,13 +15,13 @@ from os import getenv
 import random
 
 RANDOM_THUMBS = [
-    "https://files.catbox.moe/ikxb96.jpg",
-    "https://files.catbox.moe/dqxsjh.jpg",
-    "https://files.catbox.moe/lnaqxk.jpg",
-    "https://files.catbox.moe/0qzssp.jpg",
-    "https://files.catbox.moe/lz57vi.jpg",
-    "https://files.catbox.moe/x1fcb6.jpg",
-    "https://files.catbox.moe/32ghsc.jpg",
+    "https://files.catbox.moe/vf873g.jpg",
+    "https://files.catbox.moe/t1l756.jpg",
+    "https://files.catbox.moe/003fyq.jpg",
+    "https://files.catbox.moe/vf873g.jpg",
+    "https://files.catbox.moe/t1l756.jpg",
+    "https://files.catbox.moe/vf873g.jpg",
+    "https://files.catbox.moe/ej7cuk.jpg",
 ]
 
 def get_thumb():
@@ -123,11 +123,11 @@ confirmer = {}
 """
 START_IMG_URL = getenv(
     "START_IMG_URL",
-    "https://files.catbox.moe/34xlvu.jpg",
+    "https://files.catbox.moe/abplbz.jpg",
 )
 PING_IMG_URL = getenv(
     "PING_IMG_URL",
-    "https://files.catbox.moe/34xlvu.jpg",
+    "https://files.catbox.moe/3picc9.jpg",
 )
 PLAYLIST_IMG_URL = "https://files.catbox.moe/34xlvu.jpg"
 STATS_IMG_URL = "https://files.catbox.moe/34xlvu.jpg"
