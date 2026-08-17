@@ -58,10 +58,6 @@ def private_panel(_):
                 text="⌯ ʙᴏᴛꜱ ꜱᴛᴀᴛꜱ ⌯",
                 url="https://t.me/ll_ROYAL_ABOUT_ll"
             ),
-            InlineKeyboardButton(
-                text="⌯ ᴘʀɪᴠᴀᴄʏ ⌯",
-                url="https://graph.org/AloneMusic-04-12-2"
-            ),
         ],
     ]
 
