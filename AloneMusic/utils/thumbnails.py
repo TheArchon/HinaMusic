@@ -270,12 +270,12 @@ async def get_thumb(videoid, user_id=None):
     try:
 
         title_font = ImageFont.truetype(
-            "VIVAANXMUSIC/assets/thumb/font2.ttf",
+            "AloneMusic/assets/font2.ttf",
             32
         )
 
         regular_font = ImageFont.truetype(
-            "VIVAANXMUSIC/assets/thumb/font.ttf",
+            "AloneMusic/assets/font.ttf",
             18
         )
 
