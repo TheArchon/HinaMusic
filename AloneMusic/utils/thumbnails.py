@@ -18,9 +18,9 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 WIDTH, HEIGHT = 1280, 720
 
-FONT_TITLE = "ShiviMusic/assets/f (1).ttf"
-FONT_META = "ShiviMusic/assets/cfont (1).ttf"
-FONT_TIME = "ShiviMusic/assets/cfont (1).ttf"
+FONT_TITLE = "AloneMusic/assets/f (1).ttf"
+FONT_META = "AloneMusic/assets/cfont (1).ttf"
+FONT_TIME = "AloneMusic/assets/cfont (1).ttf"
 
 DIRECT_THUMB = "https://i.ytimg.com/vi/{videoid}/hqdefault.jpg"
 
