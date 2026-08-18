@@ -20,10 +20,10 @@ from config import YOUTUBE_IMG_URL
 # SETTINGS
 # =========================
 
-os.makedirs("cache", exist_ok=True)
-
 WIDTH = 1536
 HEIGHT = 864
+
+os.makedirs("cache", exist_ok=True)
 
 
 # =========================
@@ -41,10 +41,10 @@ def get_font(path, size):
 
 
 # =========================
-# TEXT SIZE
+# TEXT WIDTH
 # =========================
 
-def get_text_width(draw, text, font):
+def text_width(draw, text, font):
     try:
         box = draw.textbbox((0, 0), text, font=font)
         return box[2] - box[0]
@@ -53,65 +53,86 @@ def get_text_width(draw, text, font):
 
 
 # =========================
-# TEXT WRAP
+# TITLE WRAPPER
 # =========================
 
-def fit_text(draw, text, font, max_width):
+def wrap_title(draw, text, font, max_width):
+
     words = text.split()
     lines = []
     current = ""
 
     for word in words:
-        test = word if not current else current + " " + word
 
-        if get_text_width(draw, test, font) <= max_width:
+        test = (
+            word
+            if not current
+            else current + " " + word
+        )
+
+        if text_width(
+            draw,
+            test,
+            font
+        ) <= max_width:
+
             current = test
+
         else:
+
             if current:
                 lines.append(current)
+
             current = word
 
     if current:
         lines.append(current)
 
-    # Maximum 2 lines
+    # Only 2 lines
     if len(lines) > 2:
+
         lines = lines[:2]
 
-        last = lines[-1]
+        last = lines[1]
 
         while (
-            get_text_width(
+            text_width(
                 draw,
                 last + "...",
                 font
             ) > max_width
-            and len(last) > 3
+            and len(last) > 4
         ):
             last = last[:-1].rstrip()
 
-        lines[-1] = last + "..."
+        lines[1] = last + "..."
 
-    return "\n".join(lines)
+    return lines
 
 
 # =========================
 # ROUNDED IMAGE
 # =========================
 
-def rounded_image(image, size, radius):
+def make_rounded_image(
+    image,
+    width,
+    height,
+    radius=22
+):
+
     image = ImageOps.fit(
         image.convert("RGB"),
-        size,
+        (width, height),
         method=Image.Resampling.LANCZOS,
-        centering=(0.5, 0.5),
+        centering=(0.5, 0.5)
     )
 
     image = image.convert("RGBA")
 
     mask = Image.new(
         "L",
-        size,
+        (width, height),
         0
     )
 
@@ -120,7 +141,7 @@ def rounded_image(image, size, radius):
     mask_draw.rounded_rectangle(
         [
             (0, 0),
-            (size[0], size[1])
+            (width, height)
         ],
         radius=radius,
         fill=255
@@ -132,7 +153,7 @@ def rounded_image(image, size, radius):
 
 
 # =========================
-# MAIN THUMBNAIL
+# GET THUMB
 # =========================
 
 async def get_thumb(
@@ -141,16 +162,22 @@ async def get_thumb(
     next_title=None
 ):
 
-    # New cache name so old images don't load
-    file_name = f"cache/fix_{videoid}.png"
+    output_file = (
+        f"cache/music_{videoid}.png"
+    )
 
-    if os.path.isfile(file_name):
-        return file_name
+    # Return cached image
+    if os.path.isfile(output_file):
+        return output_file
+
+    raw_file = (
+        f"cache/raw_{videoid}.jpg"
+    )
 
     try:
 
         # =========================
-        # YOUTUBE DATA
+        # YOUTUBE SEARCH
         # =========================
 
         url = (
@@ -162,24 +189,27 @@ async def get_thumb(
             limit=1
         )
 
-        res = await results.next()
+        response = await results.next()
 
         if (
-            not res
-            or "result" not in res
-            or not res["result"]
+            not response
+            or "result" not in response
+            or not response["result"]
         ):
             raise Exception(
-                "No YouTube result found"
+                "Video not found"
             )
 
-        result = res["result"][0]
+        result = response["result"][0]
 
-        # Title
+        # =========================
+        # TITLE
+        # =========================
+
         try:
             title = result["title"]
         except Exception:
-            title = "Unknown Title"
+            title = "Unknown Song"
 
         title = re.sub(
             r"\s+",
@@ -187,19 +217,19 @@ async def get_thumb(
             title
         ).strip()
 
-        # Duration
+        # =========================
+        # DURATION
+        # =========================
+
         try:
             duration = result["duration"]
         except Exception:
-            duration = "Unknown"
+            duration = "0:00"
 
-        # Channel
-        try:
-            channel = result["channel"]["name"]
-        except Exception:
-            channel = "Unknown Artist"
+        # =========================
+        # THUMBNAIL
+        # =========================
 
-        # Thumbnail URL
         try:
             thumbnail = (
                 result["thumbnails"][0]["url"]
@@ -209,25 +239,21 @@ async def get_thumb(
             thumbnail = YOUTUBE_IMG_URL
 
         # =========================
-        # DOWNLOAD THUMBNAIL
+        # DOWNLOAD IMAGE
         # =========================
-
-        raw_file = (
-            f"cache/raw_{videoid}.jpg"
-        )
 
         async with aiohttp.ClientSession() as session:
 
             async with session.get(
                 thumbnail
-            ) as response:
+            ) as resp:
 
-                if response.status != 200:
+                if resp.status != 200:
                     raise Exception(
                         "Thumbnail download failed"
                     )
 
-                data = await response.read()
+                data = await resp.read()
 
                 async with aiofiles.open(
                     raw_file,
@@ -252,31 +278,27 @@ async def get_thumb(
         )
 
         background = background.filter(
-            ImageFilter.GaussianBlur(55)
+            ImageFilter.GaussianBlur(65)
         )
 
         background = ImageEnhance.Brightness(
             background
-        ).enhance(0.42)
-
-        background = ImageEnhance.Color(
-            background
-        ).enhance(1.15)
+        ).enhance(0.25)
 
         background = background.convert(
             "RGBA"
         )
 
-        # Dark transparent layer
-        dark = Image.new(
+        # Dark overlay
+        overlay = Image.new(
             "RGBA",
             (WIDTH, HEIGHT),
-            (0, 0, 0, 80)
+            (0, 0, 0, 90)
         )
 
         background = Image.alpha_composite(
             background,
-            dark
+            overlay
         )
 
         draw = ImageDraw.Draw(
@@ -284,14 +306,14 @@ async def get_thumb(
         )
 
         # =========================
-        # MAIN WHITE CARD
+        # WHITE CARD
         # =========================
 
-        card_x = 165
-        card_y = 85
+        card_x = 135
+        card_y = 68
 
-        card_w = 1205
-        card_h = 695
+        card_w = 1270
+        card_h = 755
 
         # Shadow
         shadow = Image.new(
@@ -312,8 +334,8 @@ async def get_thumb(
                     card_y + card_h + 15
                 )
             ],
-            radius=35,
-            fill=(0, 0, 0, 120)
+            radius=38,
+            fill=(0, 0, 0, 150)
         )
 
         shadow = shadow.filter(
@@ -329,7 +351,7 @@ async def get_thumb(
             background
         )
 
-        # Main card
+        # White card
         draw.rounded_rectangle(
             [
                 (card_x, card_y),
@@ -338,36 +360,35 @@ async def get_thumb(
                     card_y + card_h
                 )
             ],
-            radius=35,
-            fill=(245, 245, 248, 245)
+            radius=38,
+            fill=(248, 248, 250)
         )
 
         # =========================
-        # LARGE ALBUM ART
+        # SONG PICTURE
         # =========================
 
-        image_x = card_x + 25
-        image_y = card_y + 25
+        # Smaller picture
+        picture_x = card_x + 38
+        picture_y = card_y + 30
 
-        image_w = card_w - 50
-        image_h = 480
+        picture_w = card_w - 76
+        picture_h = 500
 
-        album = rounded_image(
+        song_image = make_rounded_image(
             youtube,
-            (
-                image_w,
-                image_h
-            ),
-            25
+            picture_w,
+            picture_h,
+            radius=24
         )
 
         background.paste(
-            album,
+            song_image,
             (
-                image_x,
-                image_y
+                picture_x,
+                picture_y
             ),
-            album
+            song_image
         )
 
         draw = ImageDraw.Draw(
@@ -383,11 +404,6 @@ async def get_thumb(
             38
         )
 
-        artist_font = get_font(
-            "AloneMusic/assets/font2.ttf",
-            27
-        )
-
         time_font = get_font(
             "AloneMusic/assets/font3.ttf",
             24
@@ -395,84 +411,85 @@ async def get_thumb(
 
         watermark_font = get_font(
             "AloneMusic/assets/font2.ttf",
-            25
+            26
         )
 
         # =========================
         # TITLE
         # =========================
 
-        title_y = (
-            image_y
-            + image_h
-            + 10
+        title_area_width = (
+            card_w - 100
         )
 
-        max_title_width = (
-            card_w - 80
-        )
-
-        display_title = fit_text(
+        lines = wrap_title(
             draw,
             title,
             title_font,
-            max_title_width
+            title_area_width
         )
 
-        draw.multiline_text(
-            (
-                card_x + card_w // 2,
-                title_y
-            ),
-            display_title,
-            fill=(10, 10, 10),
-            font=title_font,
-            anchor="ma",
-            align="center",
-            spacing=2
+        title_y = (
+            picture_y
+            + picture_h
+            + 25
         )
 
-        # =========================
-        # ARTIST / INFO
-        # =========================
+        # First line
+        if len(lines) >= 1:
 
-        info_y = (
-            title_y
-            + 70
-        )
+            w = text_width(
+                draw,
+                lines[0],
+                title_font
+            )
 
-        info_text = (
-            f"YouTube | {channel}"
-        )
+            draw.text(
+                (
+                    card_x
+                    + (card_w - w) / 2,
+                    title_y
+                ),
+                lines[0],
+                fill=(10, 10, 10),
+                font=title_font
+            )
 
-        info_width = get_text_width(
-            draw,
-            info_text,
-            artist_font
-        )
+        # Second line
+        if len(lines) >= 2:
 
-        draw.text(
-            (
-                card_x
-                + (card_w - info_width) // 2,
-                info_y
-            ),
-            info_text,
-            fill=(20, 20, 20),
-            font=artist_font
-        )
+            w = text_width(
+                draw,
+                lines[1],
+                title_font
+            )
+
+            draw.text(
+                (
+                    card_x
+                    + (card_w - w) / 2,
+                    title_y + 48
+                ),
+                lines[1],
+                fill=(10, 10, 10),
+                font=title_font
+            )
 
         # =========================
         # PROGRESS BAR
         # =========================
 
-        bar_x = card_x + 120
-        bar_y = card_y + card_h - 75
+        bar_x = card_x + 85
+        bar_y = (
+            card_y
+            + card_h
+            - 80
+        )
 
-        bar_w = card_w - 240
+        bar_w = card_w - 170
         bar_h = 7
 
-        # Background bar
+        # Gray background
         draw.rounded_rectangle(
             [
                 (bar_x, bar_y),
@@ -482,13 +499,13 @@ async def get_thumb(
                 )
             ],
             radius=4,
-            fill=(100, 100, 100)
+            fill=(145, 145, 145)
         )
 
         # Progress
         progress = 0.30
 
-        progress_w = (
+        progress_width = (
             bar_w * progress
         )
 
@@ -496,38 +513,46 @@ async def get_thumb(
             [
                 (bar_x, bar_y),
                 (
-                    bar_x + progress_w,
+                    bar_x + progress_width,
                     bar_y + bar_h
                 )
             ],
             radius=4,
-            fill=(20, 160, 35)
+            fill=(20, 165, 50)
         )
 
-        # Slider dot
+        # Progress dot
         dot_x = (
             bar_x
-            + progress_w
+            + progress_width
         )
 
         dot_y = (
             bar_y
-            + bar_h // 2
+            + bar_h / 2
         )
 
         draw.ellipse(
             [
-                (dot_x - 10, dot_y - 10),
-                (dot_x + 10, dot_y + 10)
+                (
+                    dot_x - 11,
+                    dot_y - 11
+                ),
+                (
+                    dot_x + 11,
+                    dot_y + 11
+                )
             ],
-            fill=(20, 160, 35)
+            fill=(20, 165, 50)
         )
 
         # =========================
-        # TIMESTAMPS
+        # TIME
         # =========================
 
-        time_y = bar_y + 18
+        time_y = (
+            bar_y + 22
+        )
 
         draw.text(
             (
@@ -535,11 +560,11 @@ async def get_thumb(
                 time_y
             ),
             "00:00",
-            fill=(20, 20, 20),
+            fill=(15, 15, 15),
             font=time_font
         )
 
-        duration_width = get_text_width(
+        duration_w = text_width(
             draw,
             duration,
             time_font
@@ -549,11 +574,11 @@ async def get_thumb(
             (
                 bar_x
                 + bar_w
-                - duration_width,
+                - duration_w,
                 time_y
             ),
             duration,
-            fill=(20, 20, 20),
+            fill=(15, 15, 15),
             font=time_font
         )
 
@@ -563,7 +588,7 @@ async def get_thumb(
 
         watermark = "Meera Music"
 
-        wm_width = get_text_width(
+        wm_w = text_width(
             draw,
             watermark,
             watermark_font
@@ -572,7 +597,7 @@ async def get_thumb(
         draw.text(
             (
                 WIDTH
-                - wm_width
+                - wm_w
                 - 40,
                 25
             ),
@@ -590,18 +615,18 @@ async def get_thumb(
         )
 
         background.save(
-            file_name,
+            output_file,
             "PNG",
             optimize=True
         )
 
-        # Remove raw image
+        # Delete temporary file
         try:
             os.remove(raw_file)
         except Exception:
             pass
 
-        return file_name
+        return output_file
 
     except Exception as e:
 
@@ -609,11 +634,17 @@ async def get_thumb(
             f"Thumbnail Error: {e}"
         )
 
+        try:
+            if os.path.exists(raw_file):
+                os.remove(raw_file)
+        except Exception:
+            pass
+
         return YOUTUBE_IMG_URL
 
 
 # =========================
-# YOUTUBE THUMB URL
+# GET YOUTUBE THUMBNAIL URL
 # =========================
 
 async def get_qthumb(vidid):
@@ -631,10 +662,15 @@ async def get_qthumb(vidid):
 
         response = await results.next()
 
-        for result in response["result"]:
+        if (
+            response
+            and "result" in response
+            and response["result"]
+        ):
 
             return (
-                result["thumbnails"][0]["url"]
+                response["result"][0]
+                ["thumbnails"][0]["url"]
                 .split("?")[0]
             )
 
@@ -644,4 +680,4 @@ async def get_qthumb(vidid):
             f"get_qthumb Error: {e}"
         )
 
-        return YOUTUBE_IMG_URL
+    return YOUTUBE_IMG_URL
