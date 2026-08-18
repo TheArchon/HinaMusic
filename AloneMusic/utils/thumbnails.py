@@ -351,8 +351,8 @@ async def get_thumb(videoid: str) -> str:
                 except Exception:
                     return ImageFont.load_default()
 
-        FONT_BOLD = "ShiviMusic/assets/font2.ttf"
-        FONT_REG = "ShiviMusic/assets/font.ttf"
+        FONT_BOLD = "AloneMusic/assets/font2.ttf"
+        FONT_REG = "AloneMusic/assets/font.ttf"
 
         fn_eyebrow = load_font(FONT_REG, sc(20))
         fn_title = load_font(FONT_BOLD, sc(46))
