@@ -1,6 +1,5 @@
 #
-# Meera Music Thumbnail Generator
-# Fixed YouTube thumbnail / white player card
+# Copyright (C) 2021-2022 by TheAloneTeam@Github
 #
 
 import os
@@ -8,7 +7,6 @@ import re
 
 import aiofiles
 import aiohttp
-
 from PIL import (
     Image,
     ImageDraw,
@@ -17,27 +15,29 @@ from PIL import (
     ImageFont,
     ImageOps,
 )
-
 from py_yt import VideosSearch
 
 from config import YOUTUBE_IMG_URL
 
 
-# ============================================================
-# SETTINGS
-# ============================================================
-
-WIDTH = 1536
-HEIGHT = 864
-
 CACHE_DIR = "cache"
-
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
-# ============================================================
-# FONT HELPER
-# ============================================================
+def changeImageSize(maxWidth, maxHeight, image):
+    ratio = min(
+        maxWidth / image.width,
+        maxHeight / image.height
+    )
+
+    new_width = int(image.width * ratio)
+    new_height = int(image.height * ratio)
+
+    return image.resize(
+        (new_width, new_height),
+        Image.Resampling.LANCZOS
+    )
+
 
 def get_font(path, size):
     try:
@@ -49,741 +49,465 @@ def get_font(path, size):
             return ImageFont.load_default()
 
 
-# ============================================================
-# TEXT WIDTH
-# ============================================================
+async def get_thumb(videoid, user_name=None, next_title=None):
 
-def get_text_width(draw, text, font):
-    try:
-        box = draw.textbbox(
-            (0, 0),
-            text,
-            font=font
-        )
-        return box[2] - box[0]
-    except Exception:
-        return draw.textlength(
-            text,
-            font=font
-        )
-
-
-# ============================================================
-# TEXT WRAPPER
-# ============================================================
-
-def wrap_text(
-    draw,
-    text,
-    font,
-    max_width,
-    max_lines=2
-):
-
-    words = text.split()
-
-    lines = []
-    current = ""
-
-    for word in words:
-
-        test = (
-            word
-            if not current
-            else current + " " + word
-        )
-
-        if (
-            get_text_width(
-                draw,
-                test,
-                font
-            ) <= max_width
-        ):
-            current = test
-
-        else:
-
-            if current:
-                lines.append(current)
-
-            current = word
-
-    if current:
-        lines.append(current)
-
-    # Keep only requested number of lines
-    if len(lines) > max_lines:
-
-        lines = lines[:max_lines]
-
-        last = lines[-1]
-
-        while (
-            get_text_width(
-                draw,
-                last + "...",
-                font
-            ) > max_width
-            and len(last) > 5
-        ):
-            last = last[:-1].rstrip()
-
-        lines[-1] = last + "..."
-
-    return lines
-
-
-# ============================================================
-# ROUNDED THUMBNAIL
-# ============================================================
-
-def make_thumbnail(
-    image,
-    box_width,
-    box_height,
-    radius=24
-):
-
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # ImageOps.contain = picture crop nahi hogi
-    # --------------------------------------------------------
-
-    source = image.convert("RGB")
-
-    contained = ImageOps.contain(
-        source,
-        (
-            box_width,
-            box_height
-        ),
-        method=Image.Resampling.LANCZOS
-    )
-
-    # White background inside thumbnail area
-    canvas = Image.new(
-        "RGB",
-        (
-            box_width,
-            box_height
-        ),
-        (245, 245, 245)
-    )
-
-    x = (
-        box_width
-        - contained.width
-    ) // 2
-
-    y = (
-        box_height
-        - contained.height
-    ) // 2
-
-    canvas.paste(
-        contained,
-        (x, y)
-    )
-
-    canvas = canvas.convert("RGBA")
-
-    # Rounded mask
-    mask = Image.new(
-        "L",
-        (
-            box_width,
-            box_height
-        ),
-        0
-    )
-
-    mask_draw = ImageDraw.Draw(mask)
-
-    mask_draw.rounded_rectangle(
-        [
-            (0, 0),
-            (
-                box_width - 1,
-                box_height - 1
-            )
-        ],
-        radius=radius,
-        fill=255
-    )
-
-    canvas.putalpha(mask)
-
-    return canvas
-
-
-# ============================================================
-# GET THUMBNAIL
-# ============================================================
-
-async def get_thumb(
-    videoid,
-    user_name=None,
-    next_title=None
-):
-
-    output_file = (
-        f"{CACHE_DIR}/{videoid}.png"
-    )
-
-    raw_file = (
-        f"{CACHE_DIR}/thumb_{videoid}.jpg"
-    )
-
-    # --------------------------------------------------------
-    # CACHE
-    # --------------------------------------------------------
+    output_file = f"{CACHE_DIR}/{videoid}.png"
 
     if os.path.isfile(output_file):
-
         return output_file
 
+    url = f"https://www.youtube.com/watch?v={videoid}"
+
     try:
+        # -----------------------------------------
+        # GET YOUTUBE DATA
+        # -----------------------------------------
+        results = VideosSearch(url, limit=1)
+        res = await results.next()
 
-        # ====================================================
-        # SEARCH VIDEO
-        # ====================================================
+        if not res or "result" not in res or not res["result"]:
+            raise Exception("No results found")
 
-        url = (
-            f"https://www.youtube.com/watch?v={videoid}"
-        )
+        result = res["result"][0]
 
-        results = VideosSearch(
-            url,
-            limit=1
-        )
-
-        response = await results.next()
-
-        if (
-            not response
-            or "result" not in response
-            or not response["result"]
-        ):
-            raise Exception(
-                "No video result found"
-            )
-
-        result = response["result"][0]
-
-        # ====================================================
-        # TITLE
-        # ====================================================
-
+        # Title
         try:
             title = result["title"]
         except Exception:
             title = "Unknown Song"
 
-        title = re.sub(
-            r"\s+",
-            " ",
-            title
-        ).strip()
+        title = re.sub(r"\s+", " ", title).strip()
 
-        # ====================================================
-        # DURATION
-        # ====================================================
-
+        # Duration
         try:
             duration = result["duration"]
         except Exception:
             duration = "0:00"
 
-        # ====================================================
-        # THUMBNAIL URL
-        # ====================================================
-
+        # Thumbnail
         try:
-
-            thumbnail_url = (
-                result["thumbnails"][0]["url"]
-                .split("?")[0]
-            )
-
+            thumbnail = result["thumbnails"][0]["url"].split("?")[0]
         except Exception:
+            return YOUTUBE_IMG_URL
 
-            thumbnail_url = YOUTUBE_IMG_URL
+        # Channel / Artist
+        try:
+            channel = result["channel"]["name"]
+        except Exception:
+            channel = "Unknown Artist"
 
-        # ====================================================
+        # -----------------------------------------
         # DOWNLOAD THUMBNAIL
-        # ====================================================
+        # -----------------------------------------
+        thumb_file = f"{CACHE_DIR}/thumb_{videoid}.jpg"
 
         async with aiohttp.ClientSession() as session:
-
             async with session.get(
-                thumbnail_url
-            ) as response:
+                thumbnail,
+                timeout=aiohttp.ClientTimeout(total=20)
+            ) as resp:
 
-                if response.status != 200:
-                    raise Exception(
-                        "Thumbnail download failed"
-                    )
+                if resp.status != 200:
+                    return YOUTUBE_IMG_URL
 
-                image_data = await response.read()
+                data = await resp.read()
 
         async with aiofiles.open(
-            raw_file,
-            "wb"
-        ) as file:
+            thumb_file,
+            mode="wb"
+        ) as f:
+            await f.write(data)
 
-            await file.write(
-                image_data
-            )
+        # -----------------------------------------
+        # OPEN ORIGINAL THUMBNAIL
+        # -----------------------------------------
+        youtube = Image.open(thumb_file).convert("RGB")
 
-        # ====================================================
-        # OPEN IMAGE
-        # ====================================================
+        # -----------------------------------------
+        # CANVAS
+        # -----------------------------------------
+        WIDTH = 1536
+        HEIGHT = 1024
 
-        youtube = Image.open(
-            raw_file
-        ).convert("RGB")
-
-        # ====================================================
-        # BACKGROUND
-        # ====================================================
-
-        background = ImageOps.fit(
+        # Background
+        bg = ImageOps.fit(
             youtube,
-            (
-                WIDTH,
-                HEIGHT
-            ),
-            method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5)
+            (WIDTH, HEIGHT),
+            method=Image.Resampling.LANCZOS
         )
 
-        background = background.filter(
-            ImageFilter.GaussianBlur(65)
+        bg = bg.filter(
+            ImageFilter.GaussianBlur(35)
         )
 
-        background = ImageEnhance.Brightness(
-            background
+        bg = ImageEnhance.Brightness(
+            bg
         ).enhance(0.22)
 
-        background = background.convert(
-            "RGBA"
-        )
+        bg = bg.convert("RGBA")
 
-        # Dark overlay
-        dark_layer = Image.new(
+        # -----------------------------------------
+        # WHITE MUSIC PLAYER
+        # -----------------------------------------
+        player_x = 85
+        player_y = 85
+        player_w = 1365
+        player_h = 850
+
+        overlay = Image.new(
             "RGBA",
-            (
-                WIDTH,
-                HEIGHT
-            ),
-            (0, 0, 0, 100)
-        )
-
-        background = Image.alpha_composite(
-            background,
-            dark_layer
-        )
-
-        draw = ImageDraw.Draw(
-            background
-        )
-
-        # ====================================================
-        # WHITE CARD
-        # ====================================================
-
-        card_x = 88
-        card_y = 85
-
-        card_w = 1360
-        card_h = 790
-
-        # Shadow
-        shadow = Image.new(
-            "RGBA",
-            (
-                WIDTH,
-                HEIGHT
-            ),
+            (WIDTH, HEIGHT),
             (0, 0, 0, 0)
         )
 
-        shadow_draw = ImageDraw.Draw(
-            shadow
-        )
+        odraw = ImageDraw.Draw(overlay)
 
-        shadow_draw.rounded_rectangle(
+        # Shadow
+        odraw.rounded_rectangle(
             [
+                (player_x + 10, player_y + 12),
                 (
-                    card_x + 8,
-                    card_y + 12
-                ),
-                (
-                    card_x
-                    + card_w
-                    + 8,
-                    card_y
-                    + card_h
-                    + 12
+                    player_x + player_w + 10,
+                    player_y + player_h + 12
                 )
             ],
-            radius=38,
-            fill=(0, 0, 0, 150)
+            radius=45,
+            fill=(0, 0, 0, 100)
         )
 
-        shadow = shadow.filter(
-            ImageFilter.GaussianBlur(22)
+        # Main white player
+        odraw.rounded_rectangle(
+            [
+                (player_x, player_y),
+                (
+                    player_x + player_w,
+                    player_y + player_h
+                )
+            ],
+            radius=45,
+            fill=(250, 250, 252, 255)
         )
 
-        background = Image.alpha_composite(
-            background,
-            shadow
+        bg = Image.alpha_composite(
+            bg,
+            overlay
         )
 
-        draw = ImageDraw.Draw(
-            background
-        )
+        draw = ImageDraw.Draw(bg)
 
-        # White card
+        # -----------------------------------------
+        # THUMBNAIL AREA
+        # -----------------------------------------
+        image_x = player_x + 45
+        image_y = player_y + 30
+
+        image_w = player_w - 90
+        image_h = 505
+
+        # White area behind image
         draw.rounded_rectangle(
             [
+                (image_x, image_y),
                 (
-                    card_x,
-                    card_y
-                ),
-                (
-                    card_x + card_w,
-                    card_y + card_h
+                    image_x + image_w,
+                    image_y + image_h
                 )
             ],
-            radius=38,
-            fill=(248, 248, 250)
+            radius=28,
+            fill=(245, 245, 247, 255)
         )
 
-        # ====================================================
-        # SONG PICTURE
-        # ====================================================
-
-        # Picture ko card ke andar proper size diya gaya hai
-        picture_x = card_x + 45
-        picture_y = card_y + 30
-
-        picture_w = card_w - 90
-        picture_h = 505
-
-        song_picture = make_thumbnail(
+        # -----------------------------------------
+        # IMPORTANT:
+        # FULL IMAGE FIT — NO CROPPING
+        # -----------------------------------------
+        fitted = ImageOps.contain(
             youtube,
-            picture_w,
-            picture_h,
-            radius=25
+            (image_w, image_h),
+            method=Image.Resampling.LANCZOS
         )
 
-        background.paste(
-            song_picture,
-            (
-                picture_x,
-                picture_y
-            ),
-            song_picture
+        # Center image
+        paste_x = (
+            image_x +
+            (image_w - fitted.width) // 2
         )
 
-        draw = ImageDraw.Draw(
-            background
+        paste_y = (
+            image_y +
+            (image_h - fitted.height) // 2
         )
 
-        # ====================================================
+        # Rounded mask
+        mask = Image.new(
+            "L",
+            fitted.size,
+            0
+        )
+
+        mask_draw = ImageDraw.Draw(mask)
+
+        mask_draw.rounded_rectangle(
+            [
+                (0, 0),
+                (
+                    fitted.width - 1,
+                    fitted.height - 1
+                )
+            ],
+            radius=25,
+            fill=255
+        )
+
+        bg.paste(
+            fitted,
+            (paste_x, paste_y),
+            mask
+        )
+
+        # -----------------------------------------
         # FONTS
-        # ====================================================
-
-        title_font = get_font(
+        # -----------------------------------------
+        font_title = get_font(
             "AloneMusic/assets/font.ttf",
             38
         )
 
-        time_font = get_font(
-            "AloneMusic/assets/font3.ttf",
-            25
-        )
-
-        watermark_font = get_font(
+        font_artist = get_font(
             "AloneMusic/assets/font2.ttf",
-            27
+            28
         )
 
-        # ====================================================
-        # SONG TITLE
-        # ====================================================
-
-        title_width = (
-            card_w - 150
+        font_time = get_font(
+            "AloneMusic/assets/font3.ttf",
+            23
         )
 
-        title_lines = wrap_text(
-            draw,
-            title,
-            title_font,
-            title_width,
-            max_lines=2
+        font_watermark = get_font(
+            "AloneMusic/assets/font2.ttf",
+            28
         )
 
-        title_y = (
-            picture_y
-            + picture_h
-            + 28
-        )
+        # -----------------------------------------
+        # TITLE
+        # -----------------------------------------
+        max_title_chars = 72
 
-        line_gap = 48
+        display_title = title
 
-        for index, line in enumerate(
-            title_lines
-        ):
-
-            line_width = get_text_width(
-                draw,
-                line,
-                title_font
+        if len(display_title) > max_title_chars:
+            display_title = (
+                display_title[:max_title_chars - 3]
+                + "..."
             )
 
-            line_x = (
-                card_x
-                + (
-                    card_w
-                    - line_width
-                ) / 2
-            )
+        # Center title
+        bbox = draw.textbbox(
+            (0, 0),
+            display_title,
+            font=font_title
+        )
 
-            draw.text(
-                (
-                    line_x,
-                    title_y
-                    + index * line_gap
-                ),
-                line,
-                fill=(10, 10, 10),
-                font=title_font
-            )
+        title_width = bbox[2] - bbox[0]
 
-        # ====================================================
+        title_x = (
+            WIDTH - title_width
+        ) // 2
+
+        title_y = player_y + 540
+
+        draw.text(
+            (title_x, title_y),
+            display_title,
+            fill=(20, 20, 20),
+            font=font_title
+        )
+
+        # -----------------------------------------
+        # ARTIST
+        # -----------------------------------------
+        artist_text = channel
+
+        bbox = draw.textbbox(
+            (0, 0),
+            artist_text,
+            font=font_artist
+        )
+
+        artist_width = bbox[2] - bbox[0]
+
+        artist_x = (
+            WIDTH - artist_width
+        ) // 2
+
+        artist_y = title_y + 55
+
+        draw.text(
+            (artist_x, artist_y),
+            artist_text,
+            fill=(90, 90, 90),
+            font=font_artist
+        )
+
+        # -----------------------------------------
         # PROGRESS BAR
-        # ====================================================
-
-        bar_x = card_x + 90
-
-        bar_y = (
-            card_y
-            + card_h
-            - 78
-        )
-
-        bar_w = card_w - 180
-
-        bar_h = 7
+        # -----------------------------------------
+        bar_x = player_x + 90
+        bar_y = player_y + player_h - 80
+        bar_w = player_w - 180
 
         # Background
         draw.rounded_rectangle(
             [
-                (
-                    bar_x,
-                    bar_y
-                ),
+                (bar_x, bar_y),
                 (
                     bar_x + bar_w,
-                    bar_y + bar_h
+                    bar_y + 7
                 )
             ],
-            radius=5,
+            radius=4,
             fill=(150, 150, 150)
         )
 
         # Progress
         progress = 0.30
 
-        progress_w = (
-            bar_w
-            * progress
+        progress_w = int(
+            bar_w * progress
         )
 
         draw.rounded_rectangle(
             [
-                (
-                    bar_x,
-                    bar_y
-                ),
+                (bar_x, bar_y),
                 (
                     bar_x + progress_w,
-                    bar_y + bar_h
+                    bar_y + 7
                 )
             ],
-            radius=5,
-            fill=(20, 170, 55)
+            radius=4,
+            fill=(30, 180, 70)
         )
 
-        # Slider dot
-        dot_x = (
-            bar_x
-            + progress_w
-        )
-
-        dot_y = (
-            bar_y
-            + bar_h / 2
-        )
+        # Slider
+        dot_x = bar_x + progress_w
 
         draw.ellipse(
             [
-                (
-                    dot_x - 12,
-                    dot_y - 12
-                ),
-                (
-                    dot_x + 12,
-                    dot_y + 12
-                )
+                (dot_x - 11, bar_y - 7),
+                (dot_x + 11, bar_y + 15)
             ],
-            fill=(20, 170, 55)
+            fill=(30, 180, 70)
         )
 
-        # ====================================================
+        # -----------------------------------------
         # TIME
-        # ====================================================
-
-        time_y = (
-            bar_y + 24
-        )
-
+        # -----------------------------------------
         draw.text(
-            (
-                bar_x,
-                time_y
-            ),
+            (bar_x, bar_y + 20),
             "00:00",
-            fill=(20, 20, 20),
-            font=time_font
+            fill=(35, 35, 35),
+            font=font_time
         )
 
-        duration_width = get_text_width(
-            draw,
+        duration_bbox = draw.textbbox(
+            (0, 0),
             duration,
-            time_font
+            font=font_time
+        )
+
+        duration_width = (
+            duration_bbox[2]
+            - duration_bbox[0]
         )
 
         draw.text(
             (
-                bar_x
-                + bar_w
-                - duration_width,
-                time_y
+                bar_x +
+                bar_w -
+                duration_width,
+                bar_y + 20
             ),
             duration,
-            fill=(20, 20, 20),
-            font=time_font
+            fill=(35, 35, 35),
+            font=font_time
         )
 
-        # ====================================================
-        # MEERA MUSIC
-        # ====================================================
-
+        # -----------------------------------------
+        # WATERMARK
+        # -----------------------------------------
         watermark = "Meera Music"
 
-        watermark_width = get_text_width(
-            draw,
+        bbox = draw.textbbox(
+            (0, 0),
             watermark,
-            watermark_font
+            font=font_watermark
         )
+
+        watermark_w = bbox[2] - bbox[0]
 
         draw.text(
             (
-                WIDTH
-                - watermark_width
-                - 42,
-                25
+                WIDTH -
+                watermark_w -
+                40,
+                30
             ),
             watermark,
-            fill=(255, 255, 255),
-            font=watermark_font
+            fill=(255, 255, 255, 230),
+            font=font_watermark
         )
 
-        # ====================================================
+        # -----------------------------------------
         # SAVE
-        # ====================================================
+        # -----------------------------------------
+        bg = bg.convert("RGB")
 
-        background = background.convert(
-            "RGB"
-        )
-
-        background.save(
+        bg.save(
             output_file,
             "PNG",
             optimize=True
         )
 
-        # ====================================================
-        # DELETE TEMP FILE
-        # ====================================================
-
+        # Remove temporary thumbnail
         try:
-            if os.path.exists(raw_file):
-                os.remove(raw_file)
+            os.remove(thumb_file)
         except Exception:
             pass
 
         return output_file
 
-    # ========================================================
-    # ERROR
-    # ========================================================
-
     except Exception as e:
-
-        print(
-            f"Thumbnail Error: {e}"
-        )
-
-        try:
-            if os.path.exists(raw_file):
-                os.remove(raw_file)
-        except Exception:
-            pass
-
+        print(f"Thumbnail Error: {e}")
         return YOUTUBE_IMG_URL
 
 
-# ============================================================
-# GET ORIGINAL YOUTUBE THUMBNAIL
-# ============================================================
-
+# -----------------------------------------
+# SIMPLE YOUTUBE THUMBNAIL URL
+# -----------------------------------------
 async def get_qthumb(vidid):
 
     try:
-
-        url = (
-            f"https://www.youtube.com/watch?v={vidid}"
-        )
+        url = f"https://www.youtube.com/watch?v={vidid}"
 
         results = VideosSearch(
             url,
             limit=1
         )
 
-        response = await results.next()
+        data = await results.next()
 
-        if (
-            response
-            and "result" in response
-            and response["result"]
-        ):
+        if not data or not data.get("result"):
+            return YOUTUBE_IMG_URL
 
-            return (
-                response["result"][0]
-                ["thumbnails"][0]["url"]
-                .split("?")[0]
-            )
+        result = data["result"][0]
 
-    except Exception as e:
-
-        print(
-            f"get_qthumb Error: {e}"
+        thumbnail = (
+            result["thumbnails"][0]["url"]
+            .split("?")[0]
         )
 
-    return YOUTUBE_IMG_URL
+        return thumbnail
+
+    except Exception as e:
+        print(f"QThumb Error: {e}")
+        return YOUTUBE_IMG_URL
