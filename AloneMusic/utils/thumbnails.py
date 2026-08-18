@@ -1,9 +1,3 @@
-#
-# Copyright (C) 2021-2022 by TheAloneteam@Github
-#
-# This file is part of AloneMusic
-#
-
 import os
 import re
 
@@ -37,35 +31,32 @@ FONT_DIR = "AloneMusic/assets"
 
 
 # ==========================================================
-# IMAGE RESIZE
-# ==========================================================
-
-def changeImageSize(maxWidth, maxHeight, image):
-    ratio = min(
-        maxWidth / image.width,
-        maxHeight / image.height
-    )
-
-    new_width = int(image.width * ratio)
-    new_height = int(image.height * ratio)
-
-    return image.resize(
-        (new_width, new_height),
-        Image.Resampling.LANCZOS
-    )
-
-
-# ==========================================================
 # FONT
 # ==========================================================
 
-def load_font(filename, size, bold=False):
+def get_font(size, bold=False):
 
-    paths = [
-        os.path.join(FONT_DIR, filename),
-        os.path.join("assets", filename),
-        filename,
-    ]
+    if bold:
+        names = [
+            "font.ttf",
+            "DejaVuSans-Bold.ttf",
+            "LiberationSans-Bold.ttf",
+        ]
+    else:
+        names = [
+            "font2.ttf",
+            "DejaVuSans.ttf",
+            "LiberationSans-Regular.ttf",
+        ]
+
+    paths = []
+
+    for name in names:
+        paths.extend([
+            os.path.join(FONT_DIR, name),
+            os.path.join("assets", name),
+            name,
+        ])
 
     for path in paths:
         try:
@@ -74,55 +65,94 @@ def load_font(filename, size, bold=False):
         except Exception:
             pass
 
-    fallback = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        if bold
-        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    fallback = (
+        "/usr/share/fonts/truetype/dejavu/"
+        + ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf")
+    )
 
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
-        if bold
-        else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-    ]
-
-    for path in fallback:
-        try:
-            if os.path.exists(path):
-                return ImageFont.truetype(path, size)
-        except Exception:
-            pass
-
-    return ImageFont.load_default()
+    try:
+        return ImageFont.truetype(fallback, size)
+    except Exception:
+        return ImageFont.load_default()
 
 
 # ==========================================================
-# TEXT HELPERS
+# TEXT WIDTH
 # ==========================================================
 
 def text_width(draw, text, font):
     try:
         return draw.textlength(text, font=font)
     except Exception:
-        return draw.textbbox(
+        box = draw.textbbox(
             (0, 0),
             text,
             font=font
-        )[2]
+        )
+        return box[2] - box[0]
 
 
-def shorten_text(text, max_chars):
+# ==========================================================
+# TRUNCATE
+# ==========================================================
+
+def shorten(text, limit):
     text = str(text).strip()
 
-    if len(text) <= max_chars:
+    if len(text) <= limit:
         return text
 
-    return text[:max_chars - 3] + "..."
+    return text[:limit - 3] + "..."
+
+
+# ==========================================================
+# DOWNLOAD
+# ==========================================================
+
+async def download_image(url, path):
+
+    try:
+
+        timeout = aiohttp.ClientTimeout(
+            total=20
+        )
+
+        async with aiohttp.ClientSession(
+            timeout=timeout
+        ) as session:
+
+            async with session.get(url) as response:
+
+                if response.status != 200:
+                    return False
+
+                data = await response.read()
+
+                async with aiofiles.open(
+                    path,
+                    "wb"
+                ) as file:
+
+                    await file.write(data)
+
+        return True
+
+    except Exception as e:
+        print(
+            f"Download Error: {e}"
+        )
+        return False
 
 
 # ==========================================================
 # ROUNDED IMAGE
 # ==========================================================
 
-def rounded_image(image, size, radius=38):
+def rounded_image(
+    image,
+    size,
+    radius=30
+):
 
     image = ImageOps.fit(
         image.convert("RGB"),
@@ -161,43 +191,7 @@ def rounded_image(image, size, radius=38):
 
 
 # ==========================================================
-# DOWNLOAD THUMBNAIL
-# ==========================================================
-
-async def download_thumbnail(url, path):
-
-    try:
-
-        timeout = aiohttp.ClientTimeout(
-            total=20
-        )
-
-        async with aiohttp.ClientSession(
-            timeout=timeout
-        ) as session:
-
-            async with session.get(url) as resp:
-
-                if resp.status != 200:
-                    return False
-
-                data = await resp.read()
-
-                async with aiofiles.open(
-                    path,
-                    "wb"
-                ) as f:
-                    await f.write(data)
-
-        return True
-
-    except Exception as e:
-        print(f"Thumbnail Download Error: {e}")
-        return False
-
-
-# ==========================================================
-# MAIN THUMBNAIL
+# GET THUMB
 # ==========================================================
 
 async def get_thumb(
@@ -206,61 +200,73 @@ async def get_thumb(
     next_title=None
 ):
 
-    output_file = f"{CACHE_DIR}/{videoid}.png"
+    output = f"{CACHE_DIR}/{videoid}.png"
 
-    # ------------------------------------------------------
-    # CACHE
-    # ------------------------------------------------------
+    if os.path.isfile(output):
+        return output
 
-    if os.path.isfile(output_file):
-        return output_file
-
-    thumb_file = f"{CACHE_DIR}/thumb_{videoid}.jpg"
+    temp = f"{CACHE_DIR}/temp_{videoid}.jpg"
 
     try:
 
         # ==================================================
-        # YOUTUBE SEARCH
+        # YOUTUBE
         # ==================================================
 
-        url = f"https://www.youtube.com/watch?v={videoid}"
+        url = (
+            f"https://www.youtube.com/"
+            f"watch?v={videoid}"
+        )
 
         results = VideosSearch(
             url,
             limit=1
         )
 
-        res = await results.next()
+        data = await results.next()
 
-        if not res:
-            raise Exception("No YouTube result")
+        if not data:
+            return YOUTUBE_IMG_URL
 
-        if "result" not in res:
-            raise Exception("Invalid YouTube result")
+        items = data.get(
+            "result",
+            []
+        )
 
-        if not res["result"]:
-            raise Exception("Empty YouTube result")
+        if not items:
+            return YOUTUBE_IMG_URL
 
-        result = res["result"][0]
+        result = items[0]
 
         # ==================================================
         # TITLE
         # ==================================================
 
+        title = result.get(
+            "title",
+            "Unknown Song"
+        )
+
+        title = re.sub(
+            r"\s+",
+            " ",
+            title
+        ).strip()
+
+        # ==================================================
+        # CHANNEL
+        # ==================================================
+
         try:
-            title = result.get(
-                "title",
-                "Unknown Song"
+            channel = result.get(
+                "channel",
+                {}
+            ).get(
+                "name",
+                "Unknown Artist"
             )
-
-            title = re.sub(
-                r"\s+",
-                " ",
-                title
-            ).strip()
-
         except Exception:
-            title = "Unknown Song"
+            channel = "Unknown Artist"
 
         # ==================================================
         # DURATION
@@ -275,22 +281,6 @@ async def get_thumb(
             duration = "0:00"
 
         # ==================================================
-        # CHANNEL
-        # ==================================================
-
-        try:
-            channel = result.get(
-                "channel",
-                {}
-            ).get(
-                "name",
-                "Unknown Artist"
-            )
-
-        except Exception:
-            channel = "Unknown Artist"
-
-        # ==================================================
         # THUMBNAIL
         # ==================================================
 
@@ -300,13 +290,10 @@ async def get_thumb(
         )
 
         if thumbnails:
-
             thumbnail = thumbnails[-1].get(
                 "url"
             )
-
         else:
-
             thumbnail = YOUTUBE_IMG_URL
 
         if not thumbnail:
@@ -318,20 +305,14 @@ async def get_thumb(
         # DOWNLOAD
         # ==================================================
 
-        success = await download_thumbnail(
+        if not await download_image(
             thumbnail,
-            thumb_file
-        )
-
-        if not success:
+            temp
+        ):
             return YOUTUBE_IMG_URL
 
-        # ==================================================
-        # OPEN THUMBNAIL
-        # ==================================================
-
         youtube = Image.open(
-            thumb_file
+            temp
         ).convert("RGB")
 
         # ==================================================
@@ -341,39 +322,35 @@ async def get_thumb(
         background = ImageOps.fit(
             youtube,
             (WIDTH, HEIGHT),
-            method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5)
+            method=Image.Resampling.LANCZOS
         )
 
         background = background.filter(
-            ImageFilter.GaussianBlur(28)
+            ImageFilter.GaussianBlur(35)
         )
 
         background = ImageEnhance.Brightness(
             background
-        ).enhance(0.27)
+        ).enhance(0.22)
 
         background = ImageEnhance.Contrast(
             background
-        ).enhance(0.85)
+        ).enhance(0.75)
 
         background = background.convert(
             "RGBA"
         )
 
-        # ==================================================
-        # DARK OVERLAY
-        # ==================================================
-
-        dark_overlay = Image.new(
+        # Dark layer
+        dark = Image.new(
             "RGBA",
             (WIDTH, HEIGHT),
-            (0, 0, 0, 95)
+            (0, 0, 0, 115)
         )
 
         background = Image.alpha_composite(
             background,
-            dark_overlay
+            dark
         )
 
         draw = ImageDraw.Draw(
@@ -381,18 +358,18 @@ async def get_thumb(
         )
 
         # ==================================================
-        # LEFT ALBUM ART
+        # MAIN BLACK PLAYER CARD
         # ==================================================
 
-        album_size = 600
-
-        album_x = 80
-        album_y = 130
+        card_x = 55
+        card_y = 85
+        card_w = 1170
+        card_h = 600
 
         # Shadow
         shadow = Image.new(
             "RGBA",
-            (album_size + 35, album_size + 35),
+            (card_w + 40, card_h + 40),
             (0, 0, 0, 0)
         )
 
@@ -402,31 +379,52 @@ async def get_thumb(
 
         shadow_draw.rounded_rectangle(
             (
-                15,
-                15,
-                album_size + 15,
-                album_size + 15
+                20,
+                20,
+                card_w + 10,
+                card_h + 10
             ),
-            radius=42,
-            fill=(0, 0, 0, 130)
+            radius=55,
+            fill=(0, 0, 0, 180)
         )
 
         shadow = shadow.filter(
-            ImageFilter.GaussianBlur(12)
+            ImageFilter.GaussianBlur(20)
         )
 
         background.alpha_composite(
             shadow,
             (
-                album_x - 8,
-                album_y - 5
+                card_x - 10,
+                card_y - 5
             )
         )
+
+        # Main card
+        draw.rounded_rectangle(
+            (
+                card_x,
+                card_y,
+                card_x + card_w,
+                card_y + card_h
+            ),
+            radius=55,
+            fill=(8, 10, 10, 235)
+        )
+
+        # ==================================================
+        # ALBUM ART
+        # ==================================================
+
+        album_size = 500
+
+        album_x = 85
+        album_y = 140
 
         album = rounded_image(
             youtube,
             album_size,
-            radius=40
+            radius=30
         )
 
         background.alpha_composite(
@@ -438,122 +436,109 @@ async def get_thumb(
         )
 
         # ==================================================
-        # ALBUM BOTTOM LABEL
+        # ALBUM DARK OVERLAY
         # ==================================================
 
-        label_height = 90
-
-        label_overlay = Image.new(
+        album_overlay = Image.new(
             "RGBA",
             (
                 album_size,
-                label_height
+                album_size
             ),
-            (255, 255, 255, 105)
+            (0, 0, 0, 65)
         )
 
-        label_mask = Image.new(
+        album_mask = Image.new(
             "L",
             (
                 album_size,
-                label_height
+                album_size
             ),
             0
         )
 
-        label_draw = ImageDraw.Draw(
-            label_mask
+        md = ImageDraw.Draw(
+            album_mask
         )
 
-        label_draw.rectangle(
+        md.rounded_rectangle(
             (
                 0,
                 0,
                 album_size,
-                label_height
+                album_size
             ),
+            radius=30,
             fill=255
         )
 
-        label_overlay.putalpha(
-            label_mask
+        album_overlay.putalpha(
+            album_mask
         )
 
         background.alpha_composite(
-            label_overlay,
+            album_overlay,
             (
                 album_x,
-                album_y + album_size - label_height
+                album_y
             )
         )
 
         # ==================================================
-        # ALBUM LABEL FONT
+        # ALBUM TITLE
         # ==================================================
 
-        font_mashup = load_font(
-            "font2.ttf",
-            34,
-            bold=True
+        album_font = get_font(
+            22
         )
 
-        mashup_text = "Bollywood Mashup"
+        album_text = shorten(
+            title.upper(),
+            25
+        )
 
         bbox = draw.textbbox(
             (0, 0),
-            mashup_text,
-            font=font_mashup
+            album_text,
+            font=album_font
         )
 
-        mashup_w = bbox[2] - bbox[0]
-        mashup_h = bbox[3] - bbox[1]
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
 
         draw.text(
             (
                 album_x +
-                (album_size - mashup_w) // 2,
+                (album_size - tw) / 2,
                 album_y +
-                album_size -
-                label_height +
-                (label_height - mashup_h) // 2 -
-                4
+                (album_size - th) / 2
             ),
-            mashup_text,
-            font=font_mashup,
-            fill="black"
+            album_text,
+            font=album_font,
+            fill="white"
         )
 
         # ==================================================
-        # RIGHT SIDE
+        # RIGHT SECTION
         # ==================================================
 
-        right_x = 765
+        right_x = 620
 
-        # ==================================================
-        # TITLE FONT
-        # ==================================================
-
-        font_title = load_font(
-            "font.ttf",
-            38,
+        title_font = get_font(
+            32,
             bold=True
         )
 
-        font_artist = load_font(
-            "font2.ttf",
-            27,
-            bold=True
+        artist_font = get_font(
+            27
         )
 
-        font_small = load_font(
-            "font2.ttf",
+        time_font = get_font(
+            18
+        )
+
+        small_font = get_font(
             18,
-            bold=True
-        )
-
-        font_time = load_font(
-            "font3.ttf",
-            17,
             bold=True
         )
 
@@ -561,18 +546,18 @@ async def get_thumb(
         # TITLE
         # ==================================================
 
-        display_title = shorten_text(
+        display_title = shorten(
             title,
-            28
+            25
         )
 
         draw.text(
             (
                 right_x,
-                178
+                142
             ),
             display_title,
-            font=font_title,
+            font=title_font,
             fill="white"
         )
 
@@ -580,77 +565,50 @@ async def get_thumb(
         # ARTIST
         # ==================================================
 
-        display_artist = shorten_text(
+        display_artist = shorten(
             channel,
-            25
+            28
         )
 
         draw.text(
             (
                 right_x,
-                247
+                180
             ),
             display_artist,
-            font=font_artist,
-            fill=(220, 220, 220)
-        )
-
-        # ==================================================
-        # STAR BUTTON
-        # ==================================================
-
-        star_x = 1305
-        star_y = 175
-
-        draw.ellipse(
-            (
-                star_x,
-                star_y,
-                star_x + 50,
-                star_y + 50
-            ),
-            fill=(150, 150, 150, 150)
-        )
-
-        font_star = load_font(
-            "font2.ttf",
-            31
-        )
-
-        draw.text(
-            (
-                star_x + 10,
-                star_y + 5
-            ),
-            "☆",
-            font=font_star,
-            fill="white"
+            font=artist_font,
+            fill=(170, 170, 175)
         )
 
         # ==================================================
         # MENU BUTTON
         # ==================================================
 
-        menu_x = 1375
-        menu_y = 175
+        menu_x = 1150
+        menu_y = 145
 
         draw.ellipse(
             (
                 menu_x,
                 menu_y,
-                menu_x + 50,
-                menu_y + 50
+                menu_x + 55,
+                menu_y + 55
             ),
-            fill=(150, 150, 150, 150)
+            fill=(80, 80, 82, 190)
+        )
+
+        menu_font = get_font(
+            28,
+            bold=True
         )
 
         draw.text(
             (
-                menu_x + 17,
-                menu_y + 2
+                menu_x + 15,
+                menu_y + 4
             ),
-            "⋮",
-            font=font_star,
+            "⋯",
+            font=menu_font,
             fill="white"
         )
 
@@ -658,48 +616,54 @@ async def get_thumb(
         # PROGRESS BAR
         # ==================================================
 
-        bar_x = 765
-        bar_y = 360
-        bar_width = 675
+        bar_x = right_x
+        bar_y = 255
+        bar_w = 560
+        bar_h = 15
 
         # Background
         draw.rounded_rectangle(
             (
                 bar_x,
                 bar_y,
-                bar_x + bar_width,
-                bar_y + 8
+                bar_x + bar_w,
+                bar_y + bar_h
             ),
-            radius=5,
-            fill=(180, 180, 180, 120)
+            radius=8,
+            fill=(85, 85, 88, 210)
         )
 
         # Progress
-        progress = 0.25
+        progress = 0.62
 
-        progress_x = int(
-            bar_x +
-            bar_width * progress
+        progress_w = int(
+            bar_w * progress
         )
 
         draw.rounded_rectangle(
             (
                 bar_x,
                 bar_y,
-                progress_x,
-                bar_y + 8
+                bar_x + progress_w,
+                bar_y + bar_h
             ),
-            radius=5,
-            fill="white"
+            radius=8,
+            fill=(225, 225, 228)
         )
 
-        # Dot
+        # ==================================================
+        # PROGRESS DOT
+        # ==================================================
+
+        dot_x = bar_x + progress_w
+        dot_y = bar_y + bar_h // 2
+
         draw.ellipse(
             (
-                progress_x - 11,
-                bar_y - 7,
-                progress_x + 11,
-                bar_y + 15
+                dot_x - 11,
+                dot_y - 11,
+                dot_x + 11,
+                dot_y + 11
             ),
             fill="white"
         )
@@ -710,42 +674,182 @@ async def get_thumb(
 
         draw.text(
             (
-                bar_x,
-                395
+                right_x,
+                290
             ),
-            "0:00",
-            font=font_time,
-            fill="white"
+            "3:23",
+            font=time_font,
+            fill=(205, 205, 208)
         )
 
-        duration_width = text_width(
+        remaining = "-1:57"
+
+        rw = text_width(
             draw,
-            str(duration),
-            font_time
+            remaining,
+            time_font
         )
 
         draw.text(
             (
-                bar_x +
-                bar_width -
-                duration_width,
-                395
+                right_x +
+                bar_w -
+                rw,
+                290
             ),
-            str(duration),
-            font=font_time,
+            remaining,
+            font=time_font,
+            fill=(205, 205, 208)
+        )
+
+        # ==================================================
+        # PREVIOUS BUTTON
+        # ==================================================
+
+        prev_x = 760
+        prev_y = 420
+
+        draw.polygon(
+            [
+                (prev_x, prev_y),
+                (prev_x + 38, prev_y - 28),
+                (prev_x + 38, prev_y + 28)
+            ],
+            fill="white"
+        )
+
+        draw.polygon(
+            [
+                (prev_x + 38, prev_y),
+                (prev_x + 76, prev_y - 28),
+                (prev_x + 76, prev_y + 28)
+            ],
             fill="white"
         )
 
         # ==================================================
-        # MEDIA OUTPUT
+        # PAUSE
         # ==================================================
 
-        output_text = "DHIYABOTS"
+        pause_x = 900
 
-        output_font = load_font(
-            "font2.ttf",
-            17,
+        draw.rounded_rectangle(
+            (
+                pause_x,
+                prev_y - 35,
+                pause_x + 18,
+                prev_y + 35
+            ),
+            radius=4,
+            fill="white"
+        )
+
+        draw.rounded_rectangle(
+            (
+                pause_x + 30,
+                prev_y - 35,
+                pause_x + 48,
+                prev_y + 35
+            ),
+            radius=4,
+            fill="white"
+        )
+
+        # ==================================================
+        # NEXT
+        # ==================================================
+
+        next_x = 1045
+
+        draw.polygon(
+            [
+                (next_x, prev_y - 28),
+                (next_x + 38, prev_y),
+                (next_x, prev_y + 28)
+            ],
+            fill="white"
+        )
+
+        draw.polygon(
+            [
+                (next_x + 38, prev_y - 28),
+                (next_x + 76, prev_y),
+                (next_x + 38, prev_y + 28)
+            ],
+            fill="white"
+        )
+
+        # ==================================================
+        # VOLUME ICON
+        # ==================================================
+
+        volume_font = get_font(
+            22,
             bold=True
+        )
+
+        draw.text(
+            (
+                right_x,
+                585
+            ),
+            "◀",
+            font=volume_font,
+            fill=(180, 180, 185)
+        )
+
+        # ==================================================
+        # VOLUME BAR
+        # ==================================================
+
+        volume_x = right_x + 45
+        volume_y = 600
+        volume_w = 450
+
+        draw.rounded_rectangle(
+            (
+                volume_x,
+                volume_y,
+                volume_x + volume_w,
+                volume_y + 14
+            ),
+            radius=7,
+            fill=(80, 80, 83)
+        )
+
+        volume_progress = 0.48
+
+        draw.rounded_rectangle(
+            (
+                volume_x,
+                volume_y,
+                volume_x +
+                int(volume_w * volume_progress),
+                volume_y + 14
+            ),
+            radius=7,
+            fill=(220, 220, 223)
+        )
+
+        # Volume icon right
+        draw.text(
+            (
+                volume_x + volume_w + 25,
+                585
+            ),
+            ")))",
+            font=volume_font,
+            fill=(180, 180, 185)
+        )
+
+        # ==================================================
+        # OUTPUT BUTTON
+        # ==================================================
+
+        output_text = "◉  iPhone"
+
+        output_font = get_font(
+            20
         )
 
         output_w = text_width(
@@ -758,10 +862,10 @@ async def get_thumb(
             output_w + 45
         )
 
-        pill_h = 38
+        pill_h = 55
 
-        pill_x = 1035
-        pill_y = 385
+        pill_x = 850
+        pill_y = 650
 
         draw.rounded_rectangle(
             (
@@ -770,208 +874,33 @@ async def get_thumb(
                 pill_x + pill_w,
                 pill_y + pill_h
             ),
-            radius=20,
-            fill=(190, 190, 190, 220)
+            radius=28,
+            fill=(65, 65, 68, 210)
         )
 
         draw.text(
             (
-                pill_x +
-                (pill_w - output_w) / 2,
-                pill_y + 8
+                pill_x + 22,
+                pill_y + 13
             ),
             output_text,
             font=output_font,
-            fill=(20, 20, 20)
-        )
-
-        # ==================================================
-        # PLAYER CONTROLS
-        # ==================================================
-
-        control_y = 575
-
-        icon_color = "white"
-
-        # --------------------------------------------------
-        # PREVIOUS
-        # --------------------------------------------------
-
-        px = 930
-
-        draw.polygon(
-            [
-                (px, control_y),
-                (px + 35, control_y - 30),
-                (px + 35, control_y + 30)
-            ],
-            fill=icon_color
-        )
-
-        draw.polygon(
-            [
-                (px + 35, control_y),
-                (px + 75, control_y - 30),
-                (px + 75, control_y + 30)
-            ],
-            fill=icon_color
-        )
-
-        draw.rectangle(
-            (
-                px - 5,
-                control_y - 30,
-                px + 2,
-                control_y + 30
-            ),
-            fill=icon_color
-        )
-
-        # --------------------------------------------------
-        # PAUSE
-        # --------------------------------------------------
-
-        pax = 1085
-
-        draw.rounded_rectangle(
-            (
-                pax,
-                control_y - 27,
-                pax + 14,
-                control_y + 27
-            ),
-            radius=4,
-            fill=icon_color
-        )
-
-        draw.rounded_rectangle(
-            (
-                pax + 27,
-                control_y - 27,
-                pax + 41,
-                control_y + 27
-            ),
-            radius=4,
-            fill=icon_color
-        )
-
-        # --------------------------------------------------
-        # NEXT
-        # --------------------------------------------------
-
-        nx = 1235
-
-        draw.polygon(
-            [
-                (nx, control_y - 30),
-                (nx + 40, control_y),
-                (nx, control_y + 30)
-            ],
-            fill=icon_color
-        )
-
-        draw.polygon(
-            [
-                (nx - 35, control_y - 30),
-                (nx + 5, control_y),
-                (nx - 35, control_y + 30)
-            ],
-            fill=icon_color
-        )
-
-        draw.rectangle(
-            (
-                nx + 40,
-                control_y - 30,
-                nx + 47,
-                control_y + 30
-            ),
-            fill=icon_color
-        )
-
-        # ==================================================
-        # VOLUME ICON
-        # ==================================================
-
-        volume_font = load_font(
-            "font2.ttf",
-            27,
-            bold=True
-        )
-
-        draw.text(
-            (
-                860,
-                655
-            ),
-            "◖))",
-            font=volume_font,
             fill="white"
         )
 
         # ==================================================
-        # VOLUME BAR
+        # BOTTOM HOME INDICATOR
         # ==================================================
 
         draw.rounded_rectangle(
             (
-                920,
-                670,
-                1345,
-                678
+                525,
+                835 - 5,
+                755,
+                845
             ),
             radius=5,
             fill="white"
-        )
-
-        # ==================================================
-        # BOTTOM ICONS
-        # ==================================================
-
-        bottom_font = load_font(
-            "font2.ttf",
-            34,
-            bold=True
-        )
-
-        draw.text(
-            (
-                1050,
-                705
-            ),
-            "▣",
-            font=bottom_font,
-            fill="white"
-        )
-
-        draw.text(
-            (
-                1150,
-                705
-            ),
-            "☷",
-            font=bottom_font,
-            fill="white"
-        )
-
-        # ==================================================
-        # WATERMARK
-        # ==================================================
-
-        watermark_font = load_font(
-            "font2.ttf",
-            22,
-            bold=True
-        )
-
-        draw.text(
-            (
-                1080,
-                40
-            ),
-            "Meera Music",
-            font=watermark_font,
-            fill=(255, 255, 255, 150)
         )
 
         # ==================================================
@@ -983,21 +912,21 @@ async def get_thumb(
         )
 
         background.save(
-            output_file,
+            output,
             "PNG",
             optimize=True
         )
 
         # ==================================================
-        # REMOVE TEMP
+        # CLEAN TEMP
         # ==================================================
 
         try:
-            os.remove(thumb_file)
+            os.remove(temp)
         except Exception:
             pass
 
-        return output_file
+        return output
 
     except Exception as e:
 
@@ -1006,12 +935,8 @@ async def get_thumb(
         )
 
         try:
-            if os.path.exists(
-                thumb_file
-            ):
-                os.remove(
-                    thumb_file
-                )
+            if os.path.exists(temp):
+                os.remove(temp)
         except Exception:
             pass
 
@@ -1019,7 +944,7 @@ async def get_thumb(
 
 
 # ==========================================================
-# GET YOUTUBE THUMBNAIL URL
+# GET YOUTUBE THUMBNAIL
 # ==========================================================
 
 async def get_qthumb(vidid):
@@ -1041,15 +966,15 @@ async def get_qthumb(vidid):
         if not data:
             return YOUTUBE_IMG_URL
 
-        result = data.get(
+        items = data.get(
             "result",
             []
         )
 
-        if not result:
+        if not items:
             return YOUTUBE_IMG_URL
 
-        thumbnails = result[0].get(
+        thumbnails = items[0].get(
             "thumbnails",
             []
         )
