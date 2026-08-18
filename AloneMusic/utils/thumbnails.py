@@ -1,3 +1,5 @@
+# AloneMusic/utils/thumbnails.py
+
 import os
 import re
 import aiohttp
@@ -16,7 +18,7 @@ from py_yt import VideosSearch
 try:
     from config import YOUTUBE_IMG_URL
 except Exception:
-    YOUTUBE_IMG_URL = "https://i.imgur.com/placeholder.jpg"
+    YOUTUBE_IMG_URL = ""
 
 
 # ==========================================================
@@ -29,13 +31,16 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 CANVAS_W = 1280
 CANVAS_H = 720
 
-THUMB_W = 680
-THUMB_H = 430
+# Picture THODA CHOTA
+THUMB_W = 620
+THUMB_H = 400
 
-THUMB_X = 45
-THUMB_Y = 145
+# Picture position
+THUMB_X = 55
+THUMB_Y = 160
 
-RIGHT_X = 760
+# Right side
+RIGHT_X = 720
 
 
 # ==========================================================
@@ -43,18 +48,19 @@ RIGHT_X = 760
 # ==========================================================
 
 def get_font(size, bold=False):
+
     if bold:
-        font_paths = [
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
         ]
     else:
-        font_paths = [
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
         ]
 
-    for path in font_paths:
+    for path in paths:
         if os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
@@ -65,13 +71,25 @@ def get_font(size, bold=False):
 
 
 # ==========================================================
-# SAFE FILENAME
+# SAFE FILE NAME
 # ==========================================================
 
 def safe_filename(text):
+
     text = str(text or "thumbnail")
-    text = re.sub(r'[\\/*?:"<>|]', "", text)
-    text = re.sub(r"\s+", "_", text)
+
+    text = re.sub(
+        r'[\\/*?:"<>|]',
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"\s+",
+        "_",
+        text
+    )
+
     return text[:100]
 
 
@@ -80,8 +98,15 @@ def safe_filename(text):
 # ==========================================================
 
 async def download_image(url, path):
+
+    if not url:
+        return False
+
     try:
-        timeout = aiohttp.ClientTimeout(total=30)
+
+        timeout = aiohttp.ClientTimeout(
+            total=30
+        )
 
         async with aiohttp.ClientSession(
             timeout=timeout
@@ -107,7 +132,11 @@ async def download_image(url, path):
         return True
 
     except Exception as e:
-        print(f"Thumbnail Download Error: {e}")
+
+        print(
+            f"Thumbnail Download Error: {e}"
+        )
+
         return False
 
 
@@ -116,7 +145,9 @@ async def download_image(url, path):
 # ==========================================================
 
 async def get_youtube_data(query):
+
     try:
+
         search = VideosSearch(
             str(query),
             limit=1
@@ -127,7 +158,10 @@ async def get_youtube_data(query):
         if not result:
             return None
 
-        videos = result.get("result", [])
+        videos = result.get(
+            "result",
+            []
+        )
 
         if not videos:
             return None
@@ -147,7 +181,10 @@ async def get_youtube_data(query):
         thumbnail = None
 
         if thumbnails:
-            thumbnail = thumbnails[-1].get("url")
+
+            thumbnail = thumbnails[-1].get(
+                "url"
+            )
 
         duration = video.get(
             "duration",
@@ -160,11 +197,14 @@ async def get_youtube_data(query):
         )
 
         if isinstance(channel, dict):
+
             channel_name = channel.get(
                 "name",
                 "YouTube"
             )
+
         else:
+
             channel_name = "YouTube"
 
         return {
@@ -175,7 +215,11 @@ async def get_youtube_data(query):
         }
 
     except Exception as e:
-        print(f"YouTube Search Error: {e}")
+
+        print(
+            f"YouTube Search Error: {e}"
+        )
+
         return None
 
 
@@ -183,11 +227,23 @@ async def get_youtube_data(query):
 # CROP IMAGE
 # ==========================================================
 
-def crop_to_ratio(image, width, height):
-    image = image.convert("RGB")
+def crop_to_ratio(
+    image,
+    width,
+    height
+):
 
-    target_ratio = width / height
-    current_ratio = image.width / image.height
+    image = image.convert(
+        "RGB"
+    )
+
+    target_ratio = (
+        width / height
+    )
+
+    current_ratio = (
+        image.width / image.height
+    )
 
     if current_ratio > target_ratio:
 
@@ -204,7 +260,7 @@ def crop_to_ratio(image, width, height):
                 left,
                 0,
                 left + new_width,
-                image.height,
+                image.height
             )
         )
 
@@ -223,13 +279,16 @@ def crop_to_ratio(image, width, height):
                 0,
                 top,
                 image.width,
-                top + new_height,
+                top + new_height
             )
         )
 
     return image.resize(
-        (width, height),
-        Image.Resampling.LANCZOS,
+        (
+            width,
+            height
+        ),
+        Image.Resampling.LANCZOS
     )
 
 
@@ -237,8 +296,14 @@ def crop_to_ratio(image, width, height):
 # ROUNDED IMAGE
 # ==========================================================
 
-def rounded_image(image, radius=30):
-    image = image.convert("RGBA")
+def rounded_image(
+    image,
+    radius=28
+):
+
+    image = image.convert(
+        "RGBA"
+    )
 
     mask = Image.new(
         "L",
@@ -246,36 +311,38 @@ def rounded_image(image, radius=30):
         0
     )
 
-    mask_draw = ImageDraw.Draw(mask)
+    mask_draw = ImageDraw.Draw(
+        mask
+    )
 
     mask_draw.rounded_rectangle(
         (
             0,
             0,
-            image.width,
-            image.height,
+            image.width - 1,
+            image.height - 1
         ),
         radius=radius,
-        fill=255,
+        fill=255
     )
 
     result = Image.new(
         "RGBA",
         image.size,
-        (0, 0, 0, 0),
+        (0, 0, 0, 0)
     )
 
     result.paste(
         image,
         (0, 0),
-        mask,
+        mask
     )
 
     return result
 
 
 # ==========================================================
-# TRUNCATE TEXT
+# TEXT TRUNCATE
 # ==========================================================
 
 def truncate_text(
@@ -284,9 +351,11 @@ def truncate_text(
     font,
     max_width
 ):
+
     text = str(text or "")
 
     try:
+
         width = draw.textbbox(
             (0, 0),
             text,
@@ -312,13 +381,14 @@ def truncate_text(
             text = text[:-1]
 
     except Exception:
-        return text[:40]
 
-    return text[:40]
+        return text[:35]
+
+    return text[:35]
 
 
 # ==========================================================
-# CREATE PLAYER
+# CREATE THUMBNAIL
 # ==========================================================
 
 async def create_thumbnail(
@@ -327,11 +397,14 @@ async def create_thumbnail(
     title=None,
     duration=None,
     channel=None,
+    *args,
+    **kwargs
 ):
+
     try:
 
         # --------------------------------------------------
-        # If information is not supplied, search YouTube
+        # GET YOUTUBE DATA
         # --------------------------------------------------
 
         if not thumbnail_url or not title:
@@ -362,7 +435,10 @@ async def create_thumbnail(
                     or data["channel"]
                 )
 
-        title = title or str(query)
+        title = (
+            title
+            or str(query)
+        )
 
         duration = (
             duration
@@ -380,7 +456,7 @@ async def create_thumbnail(
         )
 
         # --------------------------------------------------
-        # File names
+        # FILE
         # --------------------------------------------------
 
         filename = safe_filename(
@@ -398,7 +474,7 @@ async def create_thumbnail(
         )
 
         # --------------------------------------------------
-        # Download
+        # DOWNLOAD
         # --------------------------------------------------
 
         if not os.path.exists(
@@ -414,23 +490,26 @@ async def create_thumbnail(
                 return None
 
         # --------------------------------------------------
-        # Open
+        # OPEN IMAGE
         # --------------------------------------------------
 
         try:
+
             source = Image.open(
                 source_path
             ).convert("RGB")
 
         except Exception as e:
+
             print(
                 f"Thumbnail Open Error: {e}"
             )
+
             return None
 
-        # --------------------------------------------------
-        # Canvas
-        # --------------------------------------------------
+        # ==================================================
+        # CANVAS
+        # ==================================================
 
         canvas = Image.new(
             "RGB",
@@ -441,9 +520,9 @@ async def create_thumbnail(
             (7, 7, 7)
         )
 
-        # --------------------------------------------------
-        # Blurred Background
-        # --------------------------------------------------
+        # ==================================================
+        # BLURRED BACKGROUND
+        # ==================================================
 
         background = crop_to_ratio(
             source,
@@ -452,21 +531,25 @@ async def create_thumbnail(
         )
 
         background = background.filter(
-            ImageFilter.GaussianBlur(18)
+            ImageFilter.GaussianBlur(
+                18
+            )
         )
 
         background = ImageEnhance.Brightness(
             background
-        ).enhance(0.18)
+        ).enhance(
+            0.15
+        )
 
         canvas.paste(
             background,
             (0, 0)
         )
 
-        # --------------------------------------------------
-        # Dark Overlay
-        # --------------------------------------------------
+        # ==================================================
+        # DARK OVERLAY
+        # ==================================================
 
         overlay = Image.new(
             "RGBA",
@@ -474,7 +557,7 @@ async def create_thumbnail(
                 CANVAS_W,
                 CANVAS_H
             ),
-            (0, 0, 0, 200)
+            (0, 0, 0, 205)
         )
 
         canvas = Image.alpha_composite(
@@ -486,40 +569,40 @@ async def create_thumbnail(
             canvas
         )
 
-        # --------------------------------------------------
-        # Main Panel
-        # --------------------------------------------------
+        # ==================================================
+        # MAIN PLAYER PANEL
+        # ==================================================
 
         draw.rounded_rectangle(
             (
                 18,
                 18,
                 CANVAS_W - 18,
-                CANVAS_H - 18,
+                CANVAS_H - 18
             ),
             radius=40,
             fill=(8, 8, 8, 245),
-            outline=(38, 38, 38, 255),
-            width=2,
+            outline=(40, 40, 40, 255),
+            width=2
         )
 
-        # --------------------------------------------------
-        # Thumbnail
-        # --------------------------------------------------
+        # ==================================================
+        # SMALLER PICTURE
+        # ==================================================
 
-        thumb = crop_to_ratio(
+        thumbnail = crop_to_ratio(
             source,
             THUMB_W,
             THUMB_H
         )
 
-        thumb = rounded_image(
-            thumb,
-            radius=30
+        thumbnail = rounded_image(
+            thumbnail,
+            radius=28
         )
 
         canvas.alpha_composite(
-            thumb,
+            thumbnail,
             (
                 THUMB_X,
                 THUMB_Y
@@ -530,17 +613,17 @@ async def create_thumbnail(
             canvas
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # TITLE
-        # --------------------------------------------------
+        # ==================================================
 
         title_font = get_font(
-            35,
+            32,
             bold=True
         )
 
         small_font = get_font(
-            23
+            21
         )
 
         title_text = truncate_text(
@@ -560,9 +643,9 @@ async def create_thumbnail(
             fill=(245, 245, 245)
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # CHANNEL
-        # --------------------------------------------------
+        # ==================================================
 
         channel_text = truncate_text(
             draw,
@@ -574,49 +657,45 @@ async def create_thumbnail(
         draw.text(
             (
                 RIGHT_X,
-                140
+                138
             ),
             channel_text,
             font=small_font,
-            fill=(170, 170, 170)
+            fill=(165, 165, 165)
         )
 
-        # --------------------------------------------------
-        # CAST BUTTON
-        # --------------------------------------------------
+        # ==================================================
+        # THREE DOTS
+        # ==================================================
 
-        cx = 1175
+        cx = 1180
         cy = 95
-        radius = 30
 
         draw.ellipse(
             (
-                cx - radius,
-                cy - radius,
-                cx + radius,
-                cy + radius
+                cx - 35,
+                cy - 35,
+                cx + 35,
+                cy + 35
             ),
-            fill=(65, 65, 65)
+            fill=(55, 55, 55)
         )
 
-        cast_font = get_font(
-            25,
-            bold=True
-        )
+        for dx in (-12, 0, 12):
 
-        draw.text(
-            (
-                cx - 9,
-                cy - 16
-            ),
-            "×",
-            font=cast_font,
-            fill=(240, 240, 240)
-        )
+            draw.ellipse(
+                (
+                    cx + dx - 4,
+                    cy - 4,
+                    cx + dx + 4,
+                    cy + 4
+                ),
+                fill=(245, 245, 245)
+            )
 
-        # --------------------------------------------------
+        # ==================================================
         # PROGRESS BAR
-        # --------------------------------------------------
+        # ==================================================
 
         bar_x1 = RIGHT_X
         bar_x2 = 1235
@@ -627,10 +706,10 @@ async def create_thumbnail(
                 bar_x1,
                 bar_y,
                 bar_x2,
-                bar_y + 12
+                bar_y + 10
             ),
-            radius=8,
-            fill=(65, 65, 68)
+            radius=7,
+            fill=(60, 60, 63)
         )
 
         progress_x = 1040
@@ -640,38 +719,38 @@ async def create_thumbnail(
                 bar_x1,
                 bar_y,
                 progress_x,
-                bar_y + 12
+                bar_y + 10
             ),
-            radius=8,
+            radius=7,
             fill=(245, 245, 245)
         )
 
         draw.ellipse(
             (
-                progress_x - 15,
-                bar_y - 8,
-                progress_x + 15,
-                bar_y + 22
+                progress_x - 14,
+                bar_y - 7,
+                progress_x + 14,
+                bar_y + 21
             ),
             fill=(255, 255, 255)
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # TIME
-        # --------------------------------------------------
+        # ==================================================
 
         time_font = get_font(
-            19
+            18
         )
 
         draw.text(
             (
                 RIGHT_X,
-                305
+                300
             ),
             "0:00",
             font=time_font,
-            fill=(220, 220, 220)
+            fill=(210, 210, 210)
         )
 
         duration_box = draw.textbbox(
@@ -691,45 +770,47 @@ async def create_thumbnail(
         draw.text(
             (
                 bar_x2 - duration_width,
-                305
+                300
             ),
             str(duration),
             font=time_font,
-            fill=(220, 220, 220)
+            fill=(210, 210, 210)
         )
 
-        # --------------------------------------------------
-        # PLAYBACK BUTTONS
-        # --------------------------------------------------
+        # ==================================================
+        # PREVIOUS
+        # ==================================================
 
-        center_y = 500
+        center_y = 490
 
-        # Previous
         draw.polygon(
             [
-                (820, center_y),
-                (865, center_y - 42),
-                (865, center_y + 42)
+                (830, center_y),
+                (870, center_y - 38),
+                (870, center_y + 38)
             ],
             fill=(255, 255, 255)
         )
 
         draw.polygon(
             [
-                (850, center_y),
-                (895, center_y - 42),
-                (895, center_y + 42)
+                (855, center_y),
+                (895, center_y - 38),
+                (895, center_y + 38)
             ],
             fill=(255, 255, 255)
         )
 
-        # Pause
+        # ==================================================
+        # PAUSE
+        # ==================================================
+
         draw.rounded_rectangle(
             (
-                960,
-                center_y - 48,
-                982,
-                center_y + 48
+                975,
+                center_y - 45,
+                997,
+                center_y + 45
             ),
             radius=5,
             fill=(255, 255, 255)
@@ -737,92 +818,73 @@ async def create_thumbnail(
 
         draw.rounded_rectangle(
             (
-                1000,
-                center_y - 48,
-                1022,
-                center_y + 48
+                1015,
+                center_y - 45,
+                1037,
+                center_y + 45
             ),
             radius=5,
             fill=(255, 255, 255)
         )
 
-        # Next
+        # ==================================================
+        # NEXT
+        # ==================================================
+
         draw.polygon(
             [
-                (1120, center_y - 42),
-                (1165, center_y),
-                (1120, center_y + 42)
+                (1130, center_y - 38),
+                (1170, center_y),
+                (1130, center_y + 38)
             ],
             fill=(255, 255, 255)
         )
 
         draw.polygon(
             [
-                (1150, center_y - 42),
+                (1155, center_y - 38),
                 (1195, center_y),
-                (1150, center_y + 42)
+                (1155, center_y + 38)
             ],
             fill=(255, 255, 255)
         )
 
-        # --------------------------------------------------
-        # VOLUME BAR
-        # --------------------------------------------------
+        # ==================================================
+        # VOLUME
+        # ==================================================
 
-        volume_y = 615
-
-        draw.rounded_rectangle(
-            (
-                820,
-                volume_y,
-                1240,
-                volume_y + 12
-            ),
-            radius=8,
-            fill=(70, 70, 72)
-        )
+        volume_y = 610
 
         draw.rounded_rectangle(
             (
-                820,
+                800,
                 volume_y,
-                1040,
-                volume_y + 12
+                1235,
+                volume_y + 10
             ),
-            radius=8,
-            fill=(235, 235, 235)
+            radius=7,
+            fill=(65, 65, 68)
         )
 
-        # Speaker
-        draw.polygon(
-            [
-                (775, volume_y + 6),
-                (795, volume_y - 12),
-                (805, volume_y - 12),
-                (805, volume_y + 24),
-                (795, volume_y + 24)
-            ],
-            fill=(235, 235, 235)
-        )
-
-        draw.rectangle(
+        draw.rounded_rectangle(
             (
-                805,
-                volume_y - 8,
-                812,
-                volume_y + 20
+                800,
+                volume_y,
+                1015,
+                volume_y + 10
             ),
+            radius=7,
             fill=(235, 235, 235)
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # IPHONE BUTTON
-        # --------------------------------------------------
+        # ==================================================
 
         button_x1 = 970
-        button_y1 = 665
-        button_x2 = 1115
-        button_y2 = 710
+        button_y1 = 655
+        button_x2 = 1120
+        button_y2 = 700
 
         draw.rounded_rectangle(
             (
@@ -831,12 +893,12 @@ async def create_thumbnail(
                 button_x2,
                 button_y2
             ),
-            radius=25,
-            fill=(60, 60, 60)
+            radius=24,
+            fill=(55, 55, 55)
         )
 
         iphone_font = get_font(
-            20,
+            19,
             bold=True
         )
 
@@ -848,13 +910,8 @@ async def create_thumbnail(
             font=iphone_font
         )
 
-        text_width = (
-            box[2] - box[0]
-        )
-
-        text_height = (
-            box[3] - box[1]
-        )
+        tw = box[2] - box[0]
+        th = box[3] - box[1]
 
         draw.text(
             (
@@ -862,25 +919,25 @@ async def create_thumbnail(
                 + (
                     button_x2
                     - button_x1
-                    - text_width
+                    - tw
                 ) / 2,
 
                 button_y1
                 + (
                     button_y2
                     - button_y1
-                    - text_height
+                    - th
                 ) / 2
-                - 3,
+                - 3
             ),
             iphone,
             font=iphone_font,
             fill=(245, 245, 245)
         )
 
-        # --------------------------------------------------
+        # ==================================================
         # SAVE
-        # --------------------------------------------------
+        # ==================================================
 
         canvas = canvas.convert(
             "RGB"
@@ -896,34 +953,16 @@ async def create_thumbnail(
         return output_path
 
     except Exception as e:
+
         print(
             f"Thumbnail Creation Error: {e}"
         )
-        return None
 
-
-# ==========================================================
-# get_thumbnail
-# ==========================================================
-
-async def get_thumbnail(query):
-    try:
-        return await create_thumbnail(
-            query
-        )
-    except Exception as e:
-        print(
-            f"get_thumbnail Error: {e}"
-        )
         return None
 
 
 # ==========================================================
 # get_thumb
-# ==========================================================
-# IMPORTANT:
-# Existing AloneMusic files use get_thumb().
-# This function keeps compatibility.
 # ==========================================================
 
 async def get_thumb(
@@ -935,28 +974,38 @@ async def get_thumb(
     *args,
     **kwargs
 ):
+
     try:
-
-        # Some old code may pass URL as second argument.
-        if thumbnail_url:
-
-            return await create_thumbnail(
-                query=query,
-                thumbnail_url=thumbnail_url,
-                title=title,
-                duration=duration,
-                channel=channel,
-            )
 
         return await create_thumbnail(
             query=query,
+            thumbnail_url=thumbnail_url,
             title=title,
             duration=duration,
-            channel=channel,
+            channel=channel
         )
 
     except Exception as e:
+
         print(
             f"get_thumb Error: {e}"
         )
+
         return None
+
+
+# ==========================================================
+# get_thumbnail
+# ==========================================================
+
+async def get_thumbnail(
+    query,
+    *args,
+    **kwargs
+):
+
+    return await get_thumb(
+        query,
+        *args,
+        **kwargs
+        )
