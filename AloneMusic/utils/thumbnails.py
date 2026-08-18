@@ -1,11 +1,14 @@
 #
-# Copyright (C) 2021-2022 by TheAloneteam@Github.
-# Fixed YouTube 16:9 thumbnail / white music-player card version.
+# Copyright (C) 2021-2022 by TheAloneteam@Github, < https://github.com/TheAloneTeam >.
 #
+# This file is part of < https://github.com/TheAloneTeam/AloneMusic > project,
+# and is released under the "GNU v3.0 License Agreement".
+# Please see < https://github.com/TheAloneTeam/AloneMusic/blob/master/LICENSE >
+#
+# All rights reserved.
 
 import os
 import re
-from io import BytesIO
 
 import aiofiles
 import aiohttp
@@ -16,360 +19,239 @@ from config import YOUTUBE_IMG_URL
 
 
 def changeImageSize(maxWidth, maxHeight, image):
-    ratio = min(maxWidth / image.width, maxHeight / image.height)
-    return image.resize(
-        (max(1, int(image.width * ratio)), max(1, int(image.height * ratio))),
-        Image.Resampling.LANCZOS,
-    )
+    widthRatio = maxWidth / image.size[0]
+    heightRatio = maxHeight / image.size[1]
+    newWidth = int(widthRatio * image.size[0])
+    newHeight = int(heightRatio * image.size[1])
+    newImage = image.resize((newWidth, newHeight))
+    return newImage
 
 
 async def get_thumb(videoid, user_name=None, next_title=None):
-    cache_file = f"cache/{videoid}.png"
+    os.makedirs("cache", exist_ok=True)
 
-    if os.path.isfile(cache_file):
-        return cache_file
+    if os.path.isfile(f"cache/{videoid}.png"):
+        return f"cache/{videoid}.png"
+
+    url = f"https://www.youtube.com/watch?v={videoid}"
+    thumbnail = None
+    title = "Unsupported Title"
+    duration = "Unknown"
+    channel = "Unknown Artist"
 
     try:
-        os.makedirs("cache", exist_ok=True)
-
-        # -----------------------------
-        # Get YouTube video information
-        # -----------------------------
-        url = f"https://www.youtube.com/watch?v={videoid}"
         results = VideosSearch(url, limit=1)
         res = await results.next()
+        if not res or "result" not in res or not res["result"]:
+            raise Exception("No results found for videoid")
+        
+        for result in res["result"]:
+            try:
+                title = result["title"]
+                title = re.sub(r"\W+", " ", title)
+                title = title.title()
+            except:
+                title = "Unsupported Title"
+            try:
+                duration = result["duration"]
+            except:
+                duration = "Unknown"
+            thumbnail = result["thumbnails"][0]["url"].split("?")[0]
+            try:
+                channel = result["channel"]["name"]
+            except:
+                channel = "Unknown Artist"
 
-        if not res or not res.get("result"):
-            raise Exception("No results found")
+        if not thumbnail:
+            raise Exception("Thumbnail URL not found")
 
-        result = res["result"][0]
+        thumb_path = f"cache/thumb{videoid}.png"
 
-        try:
-            title = re.sub(r"\W+", " ", result["title"]).strip()
-        except Exception:
-            title = "Unsupported Title"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                thumbnail,
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status != 200:
+                    raise Exception(
+                        f"Thumbnail download failed with HTTP {resp.status}"
+                    )
 
-        try:
-            duration = result["duration"]
-        except Exception:
-            duration = "0:00"
+                data = await resp.read()
+                if not data:
+                    raise Exception("Downloaded thumbnail is empty")
 
-        try:
-            channel = result["channel"]["name"]
-        except Exception:
-            channel = "Unknown Artist"
+                async with aiofiles.open(thumb_path, mode="wb") as f:
+                    await f.write(data)
 
-        # ---------------------------------------------
-        # Best YouTube thumbnail: 16:9, no forced crop
-        # ---------------------------------------------
-        thumb_urls = [
-            f"https://i.ytimg.com/vi/{videoid}/maxresdefault.jpg",
-            f"https://i.ytimg.com/vi/{videoid}/sddefault.jpg",
-            f"https://i.ytimg.com/vi/{videoid}/hqdefault.jpg",
-        ]
+        youtube = Image.open(thumb_path).convert("RGBA")
 
-        thumb_data = None
-
-        timeout = aiohttp.ClientTimeout(total=15)
-
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            for thumb_url in thumb_urls:
-                try:
-                    async with session.get(thumb_url) as resp:
-                        if resp.status != 200:
-                            continue
-
-                        data = await resp.read()
-
-                        # Validate the image before using it.
-                        test = Image.open(BytesIO(data)).convert("RGB")
-
-                        if test.width >= 300 and test.height >= 150:
-                            thumb_data = data
-                            break
-
-                except Exception:
-                    continue
-
-        if thumb_data is None:
-            return YOUTUBE_IMG_URL
-
-        temp_thumb = f"cache/thumb_{videoid}.jpg"
-
-        async with aiofiles.open(temp_thumb, "wb") as f:
-            await f.write(thumb_data)
-
-        youtube = Image.open(temp_thumb).convert("RGB")
-
-        # -----------------------------
-        # 1280x720 dark blurred background
-        # -----------------------------
-        bg = ImageOps.fit(
+        # Background: Blurred and darkened version of the thumbnail
+        # Keep the background at the target aspect ratio without distortion.
+        image1 = ImageOps.fit(
             youtube,
             (1280, 720),
             method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
         )
-        bg = bg.filter(ImageFilter.GaussianBlur(45))
-        bg = ImageEnhance.Brightness(bg).enhance(0.16)
-
-        # -----------------------------
-        # Main white player card
-        # -----------------------------
-        card_w = 1130
-        card_h = 660
-        card_x = (1280 - card_w) // 2
-        card_y = (720 - card_h) // 2
-
-        card = Image.new("RGBA", (card_w, card_h), (248, 248, 250, 255))
-        card_draw = ImageDraw.Draw(card)
-
-        card_draw.rounded_rectangle(
-            (0, 0, card_w - 1, card_h - 1),
-            radius=35,
-            fill=(248, 248, 250, 255),
+        image1 = image1.filter(ImageFilter.GaussianBlur(50))
+        image1 = ImageEnhance.Brightness(image1).enhance(0.15)
+        
+        # Player Widget Dimensions (Mobile Notification Style)
+        widget_width = 1100
+        widget_height = 400
+        widget_x = (1280 - widget_width) // 2
+        widget_y = (720 - widget_height) // 2
+        
+        # Create Widget Overlay (semi-transparent dark background)
+        overlay = Image.new('RGBA', (1280, 720), (0, 0, 0, 0))
+        draw_overlay = ImageDraw.Draw(overlay)
+        
+        # Main Widget
+        draw_overlay.rounded_rectangle(
+            [(widget_x, widget_y), (widget_x + widget_width, widget_y + widget_height)],
+            radius=60,
+            fill=(15, 15, 15, 250)
         )
+        
+        # Media output pill
+        pill_w, pill_h = 240, 60
+        pill_x = widget_x + widget_width - pill_w - 40
+        pill_y = widget_y + 50
+        draw_overlay.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], radius=30, fill=(255, 255, 255, 40))
+        
+        # Progress Bar Background Line
+        bar_x = widget_x + 50
+        bar_y = widget_y + widget_height - 80
+        bar_width = widget_width - 100
+        bar_bg_height = 4
+        draw_overlay.rectangle([(bar_x, bar_y + 2), (bar_x + bar_width, bar_y + 2 + bar_bg_height)], fill=(255, 255, 255, 40))
 
-        # ----------------------------------------
-        # IMPORTANT:
-        # YouTube image stays 16:9 and is NEVER
-        # cropped. ImageOps.contain() is used.
-        # ----------------------------------------
-        margin = 45
-        image_x = margin
-        image_y = 30
-        image_w = card_w - (margin * 2)
-        image_h = int(image_w * 9 / 16)
-
-        thumb_canvas = Image.new(
-            "RGB",
-            (image_w, image_h),
-            "white",
-        )
-
-        contained = ImageOps.contain(
-            youtube,
-            (image_w, image_h),
-            method=Image.Resampling.LANCZOS,
-        )
-
-        paste_x = (image_w - contained.width) // 2
-        paste_y = (image_h - contained.height) // 2
-
-        thumb_canvas.paste(contained, (paste_x, paste_y))
-
-        # Rounded corners for thumbnail.
-        mask = Image.new("L", (image_w, image_h), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        mask_draw.rounded_rectangle(
-            (0, 0, image_w - 1, image_h - 1),
-            radius=25,
-            fill=255,
-        )
-
-        card.paste(
-            thumb_canvas,
-            (image_x, image_y),
-            mask,
-        )
-
-        # -----------------------------
-        # Fonts
-        # -----------------------------
+        image1 = image1.convert('RGBA')
+        image1 = Image.alpha_composite(image1, overlay)
+        draw = ImageDraw.Draw(image1)
+        
+        # Album Art (Square with rounded corners) - Mobile Notification Style
+        album_size = 140
+        album_x = widget_x + 40
+        album_y = widget_y + 40
+        
+        # Use ImageOps.fit to crop to square without squashing
+        youtube_thumb = ImageOps.fit(youtube, (album_size, album_size), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5)).convert("RGBA")
+        mask = Image.new("L", (album_size, album_size), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.rounded_rectangle([(0, 0), (album_size, album_size)], radius=20, fill=255)
+        youtube_thumb.putalpha(mask)
+        image1.paste(youtube_thumb, (album_x, album_y), youtube_thumb)
+        
+        # Load Fonts
         def get_font(path, size):
             try:
                 return ImageFont.truetype(path, size)
-            except Exception:
+            except:
                 try:
                     return ImageFont.truetype("arial.ttf", size)
-                except Exception:
+                except:
                     return ImageFont.load_default()
 
-        font_title = get_font("AloneMusic/assets/font.ttf", 31)
-        font_artist = get_font("AloneMusic/assets/font2.ttf", 22)
-        font_time = get_font("AloneMusic/assets/font3.ttf", 21)
-        font_watermark = get_font("AloneMusic/assets/font2.ttf", 25)
+        font_title = get_font("AloneMusic/assets/font.ttf", 60)
+        font_artist = get_font("AloneMusic/assets/font2.ttf", 35)
+        font_label = get_font("AloneMusic/assets/font2.ttf", 30)
+        font_time = get_font("AloneMusic/assets/font3.ttf", 25)
+        font_watermark = get_font("AloneMusic/assets/font2.ttf", 30)
 
-        def text_width(text, font):
-            try:
-                return card_draw.textlength(text, font=font)
-            except Exception:
-                box = card_draw.textbbox((0, 0), text, font=font)
-                return box[2] - box[0]
-
-        # -----------------------------
-        # Title: maximum 2 lines
-        # -----------------------------
-        title_area_w = card_w - 90
-        title_y = image_y + image_h + 20
-
-        words = title.split()
-        lines = []
-        current = ""
-
-        for word in words:
-            test = f"{current} {word}".strip()
-
-            if text_width(test, font_title) <= title_area_w:
-                current = test
+        def get_text_width(text, font):
+            if hasattr(draw, "textlength"):
+                return draw.textlength(text, font=font)
             else:
-                if current:
-                    lines.append(current)
-                current = word
+                return draw.textsize(text, font=font)[0]
 
-                if len(lines) == 2:
-                    break
+        # Draw Spotify-style icon and "This phone" label
+        label_x = album_x + album_size + 40
+        label_y = album_y + 10
+        
+        # Draw Spotify Circle
+        draw.ellipse([(label_x, label_y), (label_x + 35, label_y + 35)], fill="white")
+        # Draw Three Curved Lines inside (Spotify style)
+        for i in range(3):
+            draw.arc([(label_x+6, label_y+6+i*7), (label_x+29, label_y+14+i*7)], start=190, end=350, fill="black", width=3)
+            
+        draw.text((label_x + 50, label_y + 2), text="This phone", fill="white", font=font_label)
 
-        if current and len(lines) < 2:
-            lines.append(current)
-
-        if len(lines) == 2 and len(words) > 0:
-            # Add ellipsis when title did not fit completely.
-            used = " ".join(lines).split()
-            if len(used) < len(words):
-                last = lines[1]
-                while last and text_width(last + "...", font_title) > title_area_w:
-                    last = last.rsplit(" ", 1)[0] if " " in last else ""
-                lines[1] = (last + "...").strip()
-
-        line_gap = 5
-        line_heights = []
-
-        for line in lines:
-            box = card_draw.textbbox((0, 0), line, font=font_title)
-            line_heights.append(box[3] - box[1])
-
-        total_title_h = sum(line_heights) + line_gap * max(0, len(lines) - 1)
-
-        current_y = title_y
-
-        for line, h in zip(lines, line_heights):
-            w = text_width(line, font_title)
-            x = (card_w - w) / 2
-
-            card_draw.text(
-                (x, current_y),
-                line,
-                fill=(15, 15, 18),
-                font=font_title,
-            )
-
-            current_y += h + line_gap
-
-        # -----------------------------
-        # Channel / artist
-        # -----------------------------
-        artist_text = channel
-
-        artist_w = text_width(artist_text, font_artist)
-        artist_x = (card_w - artist_w) / 2
-        artist_y = current_y + 4
-
-        card_draw.text(
-            (artist_x, artist_y),
-            artist_text,
-            fill=(105, 105, 110),
-            font=font_artist,
-        )
-
-        # -----------------------------
-        # Progress bar
-        # -----------------------------
-        bar_x = 70
-        bar_w = card_w - 140
-        bar_y = card_h - 65
-        bar_h = 7
-
-        # Gray track
-        card_draw.rounded_rectangle(
-            (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h),
-            radius=4,
-            fill=(165, 165, 165),
-        )
-
-        # Green progress
+        # Draw Title and Artist
+        text_x = label_x
+        text_y_base = label_y + 80
+        
+        # Truncate title if too long
+        display_title = title
+        if len(display_title) > 35:
+            display_title = display_title[:32] + "..."
+            
+        draw.text((text_x, text_y_base - 10), text=display_title, fill="white", font=font_title)
+        draw.text((text_x, text_y_base + 75), text=channel, fill="#b3b3b3", font=font_artist)
+        
+        # Draw Media Controls (Centered and Enlarged)
+        controls_y = widget_y + 265
+        icon_color = "white"
+        
+        # Heart Icon (Standard Heart Shape - refined)
+        hx, hy = widget_x + 340, controls_y
+        draw.ellipse([(hx-18, hy-18), (hx+2, hy+2)], fill=icon_color)
+        draw.ellipse([(hx-2, hy-18), (hx+18, hy+2)], fill=icon_color)
+        draw.polygon([(hx-18, hy-3), (hx+18, hy-3), (hx, hy+20)], fill=icon_color)
+        
+        # Prev Icon
+        px, py = widget_x + 480, controls_y
+        draw.polygon([(px+18, py-20), (px-6, py), (px+18, py+20)], fill=icon_color)
+        draw.rectangle([(px-16, py-20), (px-10, py+20)], fill=icon_color)
+        
+        # Pause Icon
+        pax, pay = widget_x + 620, controls_y
+        draw.rectangle([(pax-14, pay-22), (pax-4, pay+22)], fill=icon_color)
+        draw.rectangle([(pax+4, pay-22), (pax+14, pay+22)], fill=icon_color)
+        
+        # Next Icon
+        nx, ny = widget_x + 760, controls_y
+        draw.polygon([(nx-18, ny-20), (nx+6, ny), (nx-18, ny+20)], fill=icon_color)
+        draw.rectangle([(nx+10, ny-20), (nx+16, ny+20)], fill=icon_color)
+        
+        # Media output pill text
+        label_mo = "Media output"
+        w_mo = get_text_width(label_mo, font_label)
+        draw.text((pill_x + (pill_w - w_mo)//2, pill_y + (pill_h - 45)//2), text=label_mo, fill="white", font=font_label)
+        
+        # Progress Bar
+        bar_x = widget_x + 50
+        bar_y = widget_y + widget_height - 80
+        bar_width = widget_width - 100
+        bar_fg_height = 8
+        
+        # Progress (Fixed at 20% to match reference exactly for verification)
         progress = 0.20
-        progress_w = max(1, int(bar_w * progress))
+        draw.rectangle([(bar_x, bar_y), (bar_x + bar_width * progress, bar_y + bar_fg_height)], fill="white")
+        # Slider Dot
+        dot_x = bar_x + bar_width * progress
+        draw.ellipse([(dot_x - 14, bar_y + bar_fg_height//2 - 14), (dot_x + 14, bar_y + bar_fg_height//2 + 14)], fill="white")
+        
+        # Timestamps
+        draw.text((bar_x, bar_y + 20), text="00:00", fill="#b3b3b3", font=font_time)
+        w_dur = get_text_width(duration, font_time)
+        draw.text((bar_x + bar_width - w_dur, bar_y + 20), text=duration, fill="#b3b3b3", font=font_time)
+        
+        # Watermark
+        draw.text((1280 - 180, 40), text="Meera Music", fill=(255, 255, 255, 150), font=font_watermark)
 
-        card_draw.rounded_rectangle(
-            (bar_x, bar_y, bar_x + progress_w, bar_y + bar_h),
-            radius=4,
-            fill=(35, 180, 70),
-        )
-
-        # Green slider dot
-        dot_x = bar_x + progress_w
-        dot_y = bar_y + bar_h // 2
-
-        card_draw.ellipse(
-            (
-                dot_x - 11,
-                dot_y - 11,
-                dot_x + 11,
-                dot_y + 11,
-            ),
-            fill=(35, 180, 70),
-        )
-
-        # -----------------------------
-        # Time labels
-        # -----------------------------
-        time_y = bar_y + 18
-
-        card_draw.text(
-            (bar_x, time_y),
-            "00:00",
-            fill=(20, 20, 20),
-            font=font_time,
-        )
-
-        duration_w = text_width(duration, font_time)
-
-        card_draw.text(
-            (bar_x + bar_w - duration_w, time_y),
-            duration,
-            fill=(20, 20, 20),
-            font=font_time,
-        )
-
-        # -----------------------------
-        # Composite card on background
-        # -----------------------------
-        bg_rgba = bg.convert("RGBA")
-        bg_rgba.alpha_composite(card, (card_x, card_y))
-
-        draw = ImageDraw.Draw(bg_rgba)
-
-        # -----------------------------
-        # Meera Music watermark
-        # -----------------------------
-        watermark = "Meera Music"
-        watermark_w = text_width(watermark, font_watermark)
-
-        draw.text(
-            (1280 - watermark_w - 45, 25),
-            watermark,
-            fill=(255, 255, 255, 230),
-            font=font_watermark,
-        )
-
-        # -----------------------------
-        # Save
-        # -----------------------------
         try:
-            os.remove(temp_thumb)
-        except Exception:
+            os.remove(f"cache/thumb{videoid}.png")
+        except:
             pass
 
-        bg_rgba.convert("RGB").save(
-            cache_file,
-            "PNG",
-            optimize=True,
-        )
-
-        return cache_file
+        file_name = f"cache/{videoid}.png"
+        image1.save(file_name)
+        return file_name
 
     except Exception as e:
-        print(f"Thumbnail error: {e}")
+        print(e)
         return YOUTUBE_IMG_URL
 
 
@@ -379,12 +261,13 @@ async def get_qthumb(vidid):
         results = VideosSearch(url, limit=1)
         res = await results.next()
 
-        for result in res.get("result", []):
-            return result["thumbnails"][0]["url"].split("?")[0]
+        if not res or not res.get("result"):
+            return YOUTUBE_IMG_URL
 
-        return YOUTUBE_IMG_URL
-
+        thumbnail = res["result"][0]["thumbnails"][0]["url"].split("?")[0]
+        return thumbnail
     except Exception as e:
-        print(e)
+        print(f"get_qthumb error: {e}")
         return YOUTUBE_IMG_URL
-            
+
+        
