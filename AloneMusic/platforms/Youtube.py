@@ -4,20 +4,39 @@
 # This file is part of AloneMusic project,
 # and is released under the MIT License.
 #
+# All rights reserved.
+#
 
 import asyncio
+import logging
 import os
 import random
 import re
 import time
 import urllib.parse
 from typing import Optional
-import yt_dlp
+
 import aiohttp
 from py_yt import VideosSearch
 
-from AloneMusic import logger
+try:
+    from py_yt import Playlist
+except ImportError:
+    Playlist = None
+
+try:
+    import yt_dlp
+except ImportError:
+    yt_dlp = None
+
 from AloneMusic.helpers import Track, utils
+
+
+# =========================================================
+# LOGGER
+# =========================================================
+
+logger = logging.getLogger("AloneMusic.YouTube")
 
 
 # =========================================================
@@ -29,14 +48,23 @@ API_URL = os.getenv(
     "https://web.riteshyt.in",
 ).rstrip("/")
 
-API_KEY = os.getenv("API_KEY", "")
+API_KEY = os.getenv(
+    "API_KEY",
+    "",
+)
 
 REQUEST_TIMEOUT = int(
-    os.getenv("YOUTUBE_REQUEST_TIMEOUT", "60")
+    os.getenv(
+        "YOUTUBE_REQUEST_TIMEOUT",
+        "60",
+    )
 )
 
 PREFETCH_COOLDOWN = int(
-    os.getenv("YOUTUBE_PREFETCH_COOLDOWN", "15")
+    os.getenv(
+        "YOUTUBE_PREFETCH_COOLDOWN",
+        "15",
+    )
 )
 
 
@@ -54,23 +82,25 @@ async def download_assistant(
         safe="",
     )
 
-    ext = (
+    extension = (
         "mp3"
         if dl_type == "audio"
         else "mp4"
     )
 
     if API_KEY:
+
         return (
             f"{API_URL}/downloads/"
             f"{API_KEY}/"
-            f"{safe_query}.{ext}"
+            f"{safe_query}.{extension}"
         )
 
     return (
         f"{API_URL}/downloads/stream"
         f"?query={safe_query}"
-        f"&dl_type={urllib.parse.quote(dl_type)}"
+        f"&dl_type="
+        f"{urllib.parse.quote(dl_type)}"
     )
 
 
@@ -99,10 +129,6 @@ class YouTube:
         ] = None
 
         self._recent_prefetches = {}
-
-        # -------------------------------------------------
-        # YouTube URL regex
-        # -------------------------------------------------
 
         self.regex = re.compile(
             r"^(?:"
@@ -185,7 +211,7 @@ class YouTube:
         return self._client
 
     # =====================================================
-    # COOKIES
+    # COOKIE
     # =====================================================
 
     def get_cookies(self):
@@ -200,25 +226,25 @@ class YouTube:
                     self.cookie_dir
                 ):
 
-                    for file in os.listdir(
+                    for filename in os.listdir(
                         self.cookie_dir
                     ):
 
-                        if file.endswith(
+                        if filename.endswith(
                             ".txt"
                         ):
 
                             self.cookies.append(
                                 os.path.join(
                                     self.cookie_dir,
-                                    file,
+                                    filename,
                                 )
                             )
 
             except Exception as e:
 
                 logger.warning(
-                    f"Cookie directory error: {e}"
+                    f"Cookie scan failed: {e}"
                 )
 
             self.checked = True
@@ -248,13 +274,13 @@ class YouTube:
         urls: list[str],
     ) -> None:
 
-        logger.info(
-            "Saving YouTube cookies..."
-        )
-
         os.makedirs(
             self.cookie_dir,
             exist_ok=True,
+        )
+
+        logger.info(
+            "Saving YouTube cookies..."
         )
 
         timeout = aiohttp.ClientTimeout(
@@ -278,13 +304,13 @@ class YouTube:
                     if not name:
                         continue
 
-                    link = (
+                    raw_url = (
                         "https://batbin.me/raw/"
                         + name
                     )
 
                     async with session.get(
-                        link
+                        raw_url
                     ) as response:
 
                         response.raise_for_status()
@@ -317,7 +343,7 @@ class YouTube:
         )
 
     # =====================================================
-    # VALIDATE
+    # VALIDATION
     # =====================================================
 
     def valid(
@@ -412,6 +438,191 @@ class YouTube:
         return link
 
     # =====================================================
+    # VIDEO ID
+    # =====================================================
+
+    def _get_video_id(
+        self,
+        link: str,
+    ) -> Optional[str]:
+
+        if not link:
+            return None
+
+        link = str(link).strip()
+
+        patterns = [
+
+            r"(?:v=)"
+            r"([A-Za-z0-9_-]{11})",
+
+            r"youtu\.be/"
+            r"([A-Za-z0-9_-]{11})",
+
+            r"/shorts/"
+            r"([A-Za-z0-9_-]{11})",
+
+            r"/embed/"
+            r"([A-Za-z0-9_-]{11})",
+        ]
+
+        for pattern in patterns:
+
+            match = re.search(
+                pattern,
+                link,
+                re.IGNORECASE,
+            )
+
+            if match:
+                return match.group(1)
+
+        if re.fullmatch(
+            r"[A-Za-z0-9_-]{11}",
+            link,
+        ):
+            return link
+
+        return None
+
+    # =====================================================
+    # BUILD TRACK
+    # =====================================================
+
+    def _build_track(
+        self,
+        data: dict,
+        m_id: int = 0,
+        user: str = "",
+        video: bool = False,
+    ) -> Optional[Track]:
+
+        if not data:
+            return None
+
+        video_id = data.get("id")
+
+        if not video_id:
+            return None
+
+        thumbnails = (
+            data.get("thumbnails")
+            or []
+        )
+
+        thumbnail = ""
+
+        if thumbnails:
+
+            try:
+
+                thumbnail = (
+                    thumbnails[-1]
+                    .get("url")
+                    or ""
+                ).split("?")[0]
+
+            except Exception:
+                thumbnail = ""
+
+        channel = (
+            data.get("channel")
+            or {}
+        )
+
+        duration = (
+            data.get("duration")
+            or "00:00"
+        )
+
+        title = (
+            data.get("title")
+            or "Unknown"
+        )
+
+        link = (
+            data.get("link")
+            or (
+                self.base
+                + video_id
+            )
+        )
+
+        try:
+
+            duration_sec = (
+                utils.to_seconds(
+                    duration
+                )
+            )
+
+        except Exception:
+
+            duration_sec = 0
+
+        try:
+
+            return Track(
+                id=video_id,
+                channel_name=(
+                    channel.get(
+                        "name",
+                        "",
+                    )
+                ),
+                duration=duration,
+                duration_sec=duration_sec,
+                message_id=m_id,
+                title=title[:25],
+                thumbnail=thumbnail,
+                url=link,
+                user=user,
+                view_count=(
+                    data.get(
+                        "viewCount",
+                        {},
+                    ).get(
+                        "short",
+                        "",
+                    )
+                ),
+                video=video,
+            )
+
+        except TypeError:
+
+            # Some AloneMusic Track versions
+            # may not accept every optional field.
+
+            try:
+
+                return Track(
+                    id=video_id,
+                    channel_name=(
+                        channel.get(
+                            "name",
+                            "",
+                        )
+                    ),
+                    duration=duration,
+                    duration_sec=duration_sec,
+                    message_id=m_id,
+                    title=title[:25],
+                    thumbnail=thumbnail,
+                    url=link,
+                    user=user,
+                    video=video,
+                )
+
+            except Exception as e:
+
+                logger.error(
+                    f"Track creation failed: {e}"
+                )
+
+        return None
+
+    # =====================================================
     # SEARCH
     # =====================================================
 
@@ -421,6 +632,9 @@ class YouTube:
         m_id: int,
         video: bool = False,
     ) -> Track | None:
+
+        if not query:
+            return None
 
         client = await self.get_client()
 
@@ -460,71 +674,25 @@ class YouTube:
 
                     if results:
 
-                        data = results[0]
-
-                        thumbnails = (
-                            data.get(
-                                "thumbnails"
+                        track = (
+                            self._build_track(
+                                results[0],
+                                m_id=m_id,
+                                video=video,
                             )
-                            or []
                         )
 
-                        thumbnail = ""
-
-                        if thumbnails:
-
-                            thumbnail = (
-                                thumbnails[-1]
-                                .get("url")
-                                or ""
-                            ).split("?")[0]
-
-                        duration = (
-                            data.get("duration")
-                        )
-
-                        return Track(
-                            id=data.get("id"),
-                            channel_name=(
-                                data.get(
-                                    "channel",
-                                    {},
-                                ).get(
-                                    "name"
-                                )
-                            ),
-                            duration=duration,
-                            duration_sec=(
-                                utils.to_seconds(
-                                    duration
-                                )
-                            ),
-                            message_id=m_id,
-                            title=(
-                                data.get("title")
-                                or "Unknown"
-                            )[:25],
-                            thumbnail=thumbnail,
-                            url=data.get("link"),
-                            view_count=(
-                                data.get(
-                                    "viewCount",
-                                    {},
-                                ).get(
-                                    "short"
-                                )
-                            ),
-                            video=video,
-                        )
+                        if track:
+                            return track
 
         except Exception as e:
 
             logger.warning(
-                f"YouTube API search failed: {e}"
+                f"API search failed: {e}"
             )
 
         # -------------------------------------------------
-        # PY_YT FALLBACK
+        # PY_YT SEARCH
         # -------------------------------------------------
 
         try:
@@ -535,77 +703,104 @@ class YouTube:
                 with_live=False,
             )
 
-            results = await search.next()
+            result = await search.next()
 
-            if (
-                results
-                and results.get("result")
-            ):
+            results = (
+                result.get("result")
+                if result
+                else []
+            )
 
-                data = results[
-                    "result"
-                ][0]
+            if results:
 
-                thumbnails = (
-                    data.get(
-                        "thumbnails"
+                track = (
+                    self._build_track(
+                        results[0],
+                        m_id=m_id,
+                        video=video,
                     )
-                    or []
                 )
 
-                thumbnail = ""
-
-                if thumbnails:
-
-                    thumbnail = (
-                        thumbnails[-1]
-                        .get("url")
-                        or ""
-                    ).split("?")[0]
-
-                duration = (
-                    data.get("duration")
-                )
-
-                return Track(
-                    id=data.get("id"),
-                    channel_name=(
-                        data.get(
-                            "channel",
-                            {},
-                        ).get(
-                            "name"
-                        )
-                    ),
-                    duration=duration,
-                    duration_sec=(
-                        utils.to_seconds(
-                            duration
-                        )
-                    ),
-                    message_id=m_id,
-                    title=(
-                        data.get("title")
-                        or "Unknown"
-                    )[:25],
-                    thumbnail=thumbnail,
-                    url=data.get("link"),
-                    view_count=(
-                        data.get(
-                            "viewCount",
-                            {},
-                        ).get(
-                            "short"
-                        )
-                    ),
-                    video=video,
-                )
+                if track:
+                    return track
 
         except Exception as e:
 
             logger.warning(
                 f"py_yt search failed: {e}"
             )
+
+        # -------------------------------------------------
+        # YT-DLP FALLBACK
+        # -------------------------------------------------
+
+        if yt_dlp:
+
+            try:
+
+                loop = asyncio.get_running_loop()
+
+                def do_search():
+
+                    options = {
+                        "quiet": True,
+                        "no_warnings": True,
+                        "skip_download": True,
+                        "extract_flat": True,
+                    }
+
+                    with yt_dlp.YoutubeDL(
+                        options
+                    ) as ydl:
+
+                        return ydl.extract_info(
+                            f"ytsearch1:{query}",
+                            download=False,
+                        )
+
+                data = await loop.run_in_executor(
+                    None,
+                    do_search,
+                )
+
+                entries = (
+                    data.get("entries")
+                    if data
+                    else []
+                )
+
+                if entries:
+
+                    item = entries[0]
+
+                    item["id"] = item.get(
+                        "id"
+                    )
+
+                    item["link"] = (
+                        item.get("webpage_url")
+                        or (
+                            self.base
+                            + item["id"]
+                        )
+                    )
+
+                    track = (
+                        self._build_track(
+                            item,
+                            m_id=m_id,
+                            video=video,
+                        )
+                    )
+
+                    if track:
+                        return track
+
+            except Exception as e:
+
+                logger.warning(
+                    f"yt-dlp search failed: {e}"
+                )
 
         return None
 
@@ -651,8 +846,10 @@ class YouTube:
 
                 if response.status == 200:
 
-                    data = await response.json(
-                        content_type=None
+                    data = (
+                        await response.json(
+                            content_type=None
+                        )
                     )
 
                     videos = (
@@ -660,221 +857,164 @@ class YouTube:
                         or []
                     )
 
-                    if videos:
+                    tracks = []
 
-                        tracks = []
+                    for item in videos[:limit]:
 
-                        for item in videos[:limit]:
-
-                            thumbnails = (
-                                item.get(
-                                    "thumbnails"
-                                )
-                                or []
+                        track = (
+                            self._build_track(
+                                item,
+                                user=user,
+                                video=video,
                             )
+                        )
 
-                            thumbnail = ""
-
-                            if thumbnails:
-
-                                thumbnail = (
-                                    thumbnails[-1]
-                                    .get("url")
-                                    or ""
-                                ).split("?")[0]
-
-                            link = (
-                                item.get("link")
-                                or ""
-                            )
-
-                            link = link.split(
-                                "&list="
-                            )[0]
-
-                            duration = (
-                                item.get(
-                                    "duration"
-                                )
-                            )
-
+                        if track:
                             tracks.append(
-                                Track(
-                                    id=item.get(
-                                        "id"
-                                    ),
-                                    channel_name=(
-                                        item.get(
-                                            "channel",
-                                            {},
-                                        ).get(
-                                            "name",
-                                            "",
-                                        )
-                                    ),
-                                    duration=duration,
-                                    duration_sec=(
-                                        utils.to_seconds(
-                                            duration
-                                        )
-                                    ),
-                                    title=(
-                                        item.get(
-                                            "title"
-                                        )
-                                        or "Unknown"
-                                    )[:25],
-                                    thumbnail=thumbnail,
-                                    url=link,
-                                    user=user,
-                                    view_count="",
-                                    video=video,
-                                )
+                                track
                             )
 
-                        if tracks:
-                            return tracks
+                    if tracks:
+                        return tracks
 
         except Exception as e:
 
             logger.warning(
-                f"Playlist API failed: {e}"
+                f"API playlist failed: {e}"
             )
 
         # -------------------------------------------------
-        # PY_YT FALLBACK
+        # PY_YT PLAYLIST
         # -------------------------------------------------
 
-        tracks = []
+        if Playlist:
 
-        try:
+            try:
 
-            playlist = await Playlist.get(
-                url
-            )
+                data = await Playlist.get(
+                    url
+                )
 
-            videos = (
-                playlist.get("videos")
-                or []
-            )
-
-            for item in videos[:limit]:
-
-                thumbnails = (
-                    item.get(
-                        "thumbnails"
-                    )
+                videos = (
+                    data.get("videos")
                     or []
                 )
 
-                thumbnail = ""
+                tracks = []
 
-                if thumbnails:
+                for item in videos[:limit]:
 
-                    thumbnail = (
-                        thumbnails[-1]
-                        .get("url")
-                        or ""
-                    ).split("?")[0]
-
-                link = (
-                    item.get("link")
-                    or ""
-                )
-
-                link = link.split(
-                    "&list="
-                )[0]
-
-                duration = (
-                    item.get("duration")
-                )
-
-                tracks.append(
-                    Track(
-                        id=item.get("id"),
-                        channel_name=(
-                            item.get(
-                                "channel",
-                                {},
-                            ).get(
-                                "name",
-                                "",
-                            )
-                        ),
-                        duration=duration,
-                        duration_sec=(
-                            utils.to_seconds(
-                                duration
-                            )
-                        ),
-                        title=(
-                            item.get(
-                                "title"
-                            )
-                            or "Unknown"
-                        )[:25],
-                        thumbnail=thumbnail,
-                        url=link,
-                        user=user,
-                        view_count="",
-                        video=video,
+                    track = (
+                        self._build_track(
+                            item,
+                            user=user,
+                            video=video,
+                        )
                     )
+
+                    if track:
+                        tracks.append(
+                            track
+                        )
+
+                if tracks:
+                    return tracks
+
+            except Exception as e:
+
+                logger.warning(
+                    f"py_yt playlist failed: {e}"
                 )
 
-        except Exception as e:
+        # -------------------------------------------------
+        # YT-DLP PLAYLIST FALLBACK
+        # -------------------------------------------------
 
-            logger.warning(
-                f"py_yt playlist failed: {e}"
-            )
+        if yt_dlp:
 
-        return tracks
+            try:
 
-    # =====================================================
-    # GET VIDEO ID
-    # =====================================================
+                loop = asyncio.get_running_loop()
 
-    def _get_video_id(
-        self,
-        link: str,
-    ) -> Optional[str]:
+                def load_playlist():
 
-        if not link:
-            return None
+                    options = {
+                        "quiet": True,
+                        "no_warnings": True,
+                        "skip_download": True,
+                        "extract_flat": True,
+                        "playlistend": limit,
+                    }
 
-        patterns = [
+                    with yt_dlp.YoutubeDL(
+                        options
+                    ) as ydl:
 
-            r"(?:v=)"
-            r"([A-Za-z0-9_-]{11})",
+                        return ydl.extract_info(
+                            url,
+                            download=False,
+                        )
 
-            r"youtu\.be/"
-            r"([A-Za-z0-9_-]{11})",
+                data = await loop.run_in_executor(
+                    None,
+                    load_playlist,
+                )
 
-            r"/shorts/"
-            r"([A-Za-z0-9_-]{11})",
+                entries = (
+                    data.get("entries")
+                    if data
+                    else []
+                )
 
-            r"/embed/"
-            r"([A-Za-z0-9_-]{11})",
-        ]
+                tracks = []
 
-        for pattern in patterns:
+                for item in entries or []:
 
-            match = re.search(
-                pattern,
-                link,
-                re.IGNORECASE,
-            )
+                    if not item:
+                        continue
 
-            if match:
-                return match.group(1)
+                    video_id = item.get(
+                        "id"
+                    )
 
-        if re.fullmatch(
-            r"[A-Za-z0-9_-]{11}",
-            link,
-        ):
-            return link
+                    if not video_id:
+                        continue
 
-        return None
+                    item["link"] = (
+                        item.get(
+                            "webpage_url"
+                        )
+                        or (
+                            self.base
+                            + video_id
+                        )
+                    )
+
+                    track = (
+                        self._build_track(
+                            item,
+                            user=user,
+                            video=video,
+                        )
+                    )
+
+                    if track:
+                        tracks.append(
+                            track
+                        )
+
+                    if len(tracks) >= limit:
+                        break
+
+                return tracks
+
+            except Exception as e:
+
+                logger.warning(
+                    f"yt-dlp playlist failed: {e}"
+                )
+
+        return []
 
     # =====================================================
     # PREFETCH
@@ -924,8 +1064,10 @@ class YouTube:
 
         if (
             previous is not None
-            and now - previous
-            < PREFETCH_COOLDOWN
+            and (
+                now - previous
+                < PREFETCH_COOLDOWN
+            )
         ):
             return True
 
@@ -933,7 +1075,10 @@ class YouTube:
             cache_key
         ] = now
 
-        # Keep cache small
+        # -------------------------------------------------
+        # Cleanup
+        # -------------------------------------------------
+
         if len(
             self._recent_prefetches
         ) > 100:
@@ -971,8 +1116,8 @@ class YouTube:
                 if response.status >= 400:
 
                     logger.warning(
-                        f"Prefetch HTTP "
-                        f"{response.status}"
+                        f"Prefetch returned "
+                        f"HTTP {response.status}"
                     )
 
                     return False
@@ -980,6 +1125,7 @@ class YouTube:
                 return True
 
         except asyncio.CancelledError:
+
             raise
 
         except Exception as e:
@@ -991,7 +1137,7 @@ class YouTube:
             return False
 
     # =====================================================
-    # RELATED / AUTOPLAY
+    # AUTOPLAY / RELATED
     # =====================================================
 
     async def get_related(
@@ -1002,11 +1148,13 @@ class YouTube:
     ) -> Track | None:
 
         """
-        Recommendations is NOT imported because
-        current py_yt versions may not provide it.
+        Recommendations has intentionally been removed.
 
-        Instead we use YouTube search as an autoplay
-        fallback.
+        Some py_yt versions do not provide:
+            Recommendations
+
+        Therefore autoplay uses YouTube search
+        instead of importing Recommendations.
         """
 
         try:
@@ -1014,7 +1162,8 @@ class YouTube:
             if not video_id:
                 return None
 
-            # Search using video ID first
+            # Search by the current video's ID.
+            # If that fails, simply return None.
             search = VideosSearch(
                 video_id,
                 limit=5,
@@ -1032,79 +1181,48 @@ class YouTube:
             if not results:
                 return None
 
-            # Remove original video
-            candidates = [
-                item
-                for item in results
-                if item.get("id")
-                and item.get("id")
-                != video_id
-            ]
+            candidates = []
 
-            if max_duration:
+            for item in results:
 
-                candidates = [
-                    item
-                    for item in candidates
-                    if utils.to_seconds(
+                item_id = item.get(
+                    "id"
+                )
+
+                if not item_id:
+                    continue
+
+                if item_id == video_id:
+                    continue
+
+                if max_duration:
+
+                    duration = utils.to_seconds(
                         item.get(
                             "duration"
                         )
                         or "00:00"
                     )
-                    <= max_duration
-                ]
+
+                    if (
+                        duration
+                        > max_duration
+                    ):
+                        continue
+
+                candidates.append(
+                    item
+                )
 
             if not candidates:
                 return None
 
-            data = random.choice(
+            selected = random.choice(
                 candidates
             )
 
-            thumbnails = (
-                data.get(
-                    "thumbnails"
-                )
-                or []
-            )
-
-            thumbnail = ""
-
-            if thumbnails:
-
-                thumbnail = (
-                    thumbnails[-1]
-                    .get("url")
-                    or ""
-                ).split("?")[0]
-
-            duration = (
-                data.get("duration")
-            )
-
-            return Track(
-                id=data.get("id"),
-                channel_name=(
-                    data.get(
-                        "channel",
-                        {},
-                    ).get(
-                        "name"
-                    )
-                ),
-                duration=duration,
-                duration_sec=(
-                    utils.to_seconds(
-                        duration
-                    )
-                ),
-                title=(
-                    data.get("title")
-                    or "Unknown"
-                )[:25],
-                thumbnail=thumbnail,
-                url=data.get("link"),
+            return self._build_track(
+                selected,
                 user="Autoplay",
                 video=video,
             )
@@ -1112,7 +1230,7 @@ class YouTube:
         except Exception as e:
 
             logger.warning(
-                f"Autoplay search failed: {e}"
+                f"Autoplay failed: {e}"
             )
 
         return None
@@ -1128,11 +1246,14 @@ class YouTube:
     ) -> str | None:
 
         """
-        FAST START DOWNLOAD.
+        FAST START STREAM.
 
-        No stream readiness request.
-        No 1024-byte wait.
-        URL returned immediately.
+        No:
+            - 1024 byte test
+            - extra stream request
+            - waiting for stream readiness
+
+        The URL is returned immediately.
         """
 
         if not video_id:
@@ -1143,28 +1264,33 @@ class YouTube:
         ).strip()
 
         # -------------------------------------------------
-        # Extract ID from URL if needed
+        # Extract ID if full URL was passed
         # -------------------------------------------------
 
-        extracted = self._get_video_id(
-            video_id
+        extracted = (
+            self._get_video_id(
+                video_id
+            )
         )
 
         if extracted:
+
             video_id = extracted
 
         # -------------------------------------------------
-        # Validate ID
+        # Validate
         # -------------------------------------------------
 
         if not re.fullmatch(
             r"[A-Za-z0-9_-]{11}",
             video_id,
         ):
+
             logger.warning(
-                f"Invalid YouTube ID: "
+                f"Invalid YouTube video ID: "
                 f"{video_id}"
             )
+
             return None
 
         youtube_url = (
@@ -1194,11 +1320,11 @@ class YouTube:
         except Exception as e:
 
             logger.warning(
-                f"Prefetch task error: {e}"
+                f"Prefetch task failed: {e}"
             )
 
         # -------------------------------------------------
-        # DIRECT STREAM URL
+        # STREAM URL
         # -------------------------------------------------
 
         if API_KEY:
@@ -1225,13 +1351,14 @@ class YouTube:
             )
 
         # -------------------------------------------------
-        # IMPORTANT:
+        # DO NOT CHECK THE STREAM HERE
         #
-        # DO NOT make another GET request here.
-        # DO NOT read 1024 bytes here.
+        # Old code was doing:
         #
-        # Returning immediately makes playback
-        # start faster.
+        # client.get(stream_url)
+        # response.content.read(1024)
+        #
+        # That adds startup delay.
         # -------------------------------------------------
 
         return stream_url
@@ -1251,7 +1378,10 @@ class YouTube:
 
                 await self._client.close()
 
-            except Exception:
-                pass
+            except Exception as e:
+
+                logger.warning(
+                    f"HTTP client close failed: {e}"
+                )
 
             self._client = None
