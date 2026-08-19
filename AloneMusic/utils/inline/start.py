@@ -49,14 +49,18 @@ def private_panel(_):
                 callback_data="Alone_Music"
             ),
             InlineKeyboardButton(
-                text="âŒ¯ êœ±á´á´œÊ€á´„á´‡ âŒ¯",
+                text="⌯ ꜱᴏᴜʀᴄᴇ ⌯",
                 callback_data="gib_source"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="âŒ¯ Ê™á´á´›êœ± êœ±á´›á´€á´›êœ± âŒ¯",
+                text="⌯ ʙᴏᴛꜱ ꜱᴛᴀᴛꜱ ⌯",
                 url="https://t.me/ll_ROYAL_ABOUT_ll"
+            ),
+            InlineKeyboardButton(
+                text="⌯ ᴘʀɪᴠᴀᴄʏ ⌯",
+                url="https://graph.org/AloneMusic-04-12-2"
             ),
         ],
     ]
