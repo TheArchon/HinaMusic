@@ -204,8 +204,8 @@ def _generate_thumb_sync(videoid: str, title: str, artist: str, duration: str,
     draw = ImageDraw.Draw(bg)
 
     try:
-        font_bold = "SWAGGYMUSIC/assets/font2.ttf"
-        font_med = "SWAGGYMUSIC/assets/font.ttf"
+        font_bold = "AloneMusic/assets/font2.ttf"
+        font_med = "AloneMusic/assets/font.ttf"
         title_font = ImageFont.truetype(font_bold, 60)
         artist_font = ImageFont.truetype(font_med, 40)
         time_font = ImageFont.truetype(font_med, 32)
