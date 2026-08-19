@@ -96,4 +96,3 @@ async def askip_command(client, message: Message, _, chat_id):
         )
     except:
         pass
-        
