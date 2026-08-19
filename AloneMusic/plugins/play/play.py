@@ -87,6 +87,12 @@ async def play_commnd(
     url,
     fplay,
 ):
+    # Delete user's /play command message
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     emoji = random.choice(
         [
             "🔥",
