@@ -272,6 +272,17 @@ async def stream(
                 mystic=mystic,
             )
             position = len(db.get(chat_id)) - 1
+            # Warm the API cache without delaying queue insertion.
+            try:
+                import asyncio
+                asyncio.create_task(
+                    YouTube.prefetch(
+                        YouTube.base + vidid,
+                        video=bool(video),
+                    )
+                )
+            except Exception:
+                pass
             button = aq_markup(_, chat_id)
             caption = _["queue_4"].format(position, title[:27], duration_min, user_name)
             await update_queue_ui(chat_id, original_chat_id, mystic, caption, button)
@@ -526,3 +537,4 @@ async def stream(
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "tg"
             db[chat_id][0]["file"] = link
+                  
