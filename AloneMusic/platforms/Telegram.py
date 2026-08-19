@@ -32,7 +32,7 @@ API_URL = os.getenv(
     "https://web.riteshyt.in",
 ).rstrip("/")
 
-API_KEY = os.getenv("API_KEY", "")
+API_KEY = os.getenv("API_KEY", "riteshfree576fd88ed84a3f46c84fd556")
 
 REQUEST_TIMEOUT = int(os.getenv("YOUTUBE_REQUEST_TIMEOUT", "60"))
 PREFETCH_COOLDOWN = int(os.getenv("YOUTUBE_PREFETCH_COOLDOWN", "15"))
