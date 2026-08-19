@@ -25,12 +25,12 @@ import config
 
 API_URL = os.getenv(
     "API_URL",
-    "https://api.riteshyt.in",
+    "https://yt.riteshyt.in",
 ).rstrip("/")
 
 API_KEY = os.getenv(
     "API_KEY",
-    "",
+    "riteshfree576fd88ed84a3f46c84fd556",
 )
 
 
