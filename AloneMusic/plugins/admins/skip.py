@@ -10,6 +10,7 @@
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, Message
 
+import logging
 import config
 from AloneMusic import YouTube, app
 from AloneMusic.core.call import Alone
@@ -22,6 +23,8 @@ from AloneMusic.utils.stream.autoclear import auto_clean
 from AloneMusic.utils.stream.stream import update_stream_ui
 from AloneMusic.utils.thumbnails import get_thumb
 from config import BANNED_USERS
+
+logger = logging.getLogger(__name__)
 
 
 async def _play_autoplay_next(_, chat_id, popped, old_mystic):
@@ -36,8 +39,11 @@ async def _play_autoplay_next(_, chat_id, popped, old_mystic):
     # stop_stream() from this path; that would end the voice chat.
     try:
         related = await YouTube.get_related_videos(vidid, limit=10)
-    except Exception:
+    except Exception as e:
+        logger.exception("Autoplay: get_related_videos failed for %s: %s", vidid, e)
         related = []
+
+    logger.info("Autoplay: related videos for %s -> %s", vidid, related)
 
     if not related:
         return False
@@ -62,17 +68,46 @@ async def _play_autoplay_next(_, chat_id, popped, old_mystic):
             if not video_id:
                 continue
 
-            details, track_id = await YouTube.track(video_id, True)
+            try:
+                details, track_id = await YouTube.track(video_id, True)
+            except Exception as e:
+                logger.exception("Autoplay: failed to fetch track details for %s: %s", video_id, e)
+                continue
+
             if not details or not details.get("title"):
                 continue
 
-            await stream(
-                _, old_mystic, user_id, details, chat_id, by, chat_id,
-                video=(popped.get("streamtype") == "video"),
-                streamtype="youtube",
-                forceplay=True,
-            )
-            return True
+            try:
+                await stream(
+                    _, old_mystic, user_id, details, chat_id, by, chat_id,
+                    video=(popped.get("streamtype") == "video"),
+                    streamtype="youtube",
+                    forceplay=True,
+                )
+                return True
+            except Exception as e:
+                logger.exception("Autoplay: streaming failed for %s: %s", video_id, e)
+                # fallback: put the candidate into the queue as forceplay
+                try:
+                    from AloneMusic.utils.stream.queue import put_queue
+                    await put_queue(
+                        chat_id,
+                        popped.get("chat_id", chat_id),
+                        f"vid_{video_id}",
+                        details.get("title", "Unknown"),
+                        details.get("duration_min", "0:00"),
+                        popped.get("by"),
+                        video_id,
+                        user_id,
+                        popped.get("streamtype"),
+                        forceplay=True,
+                        mystic=None,
+                    )
+                    logger.info("Autoplay: queued fallback vid_%s for chat %s", video_id, chat_id)
+                    return True
+                except Exception as e:
+                    logger.exception("Autoplay: fallback queue insert failed for %s: %s", video_id, e)
+                    continue
         except Exception:
             # One bad recommendation must not kill autoplay.
             continue
@@ -311,4 +346,4 @@ async def skip(cli, message: Message, _, chat_id):
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
 
-      
+          
