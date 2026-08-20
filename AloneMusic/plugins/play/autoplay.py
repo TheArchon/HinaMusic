@@ -59,41 +59,72 @@ async def askip_command(client, message: Message, _, chat_id):
     from AloneMusic.utils.stream.stream import stream
 
     if not await is_autoplay_on(chat_id):
-        return await message.reply_text("» ɴᴏᴛ ᴏɴ ʌᴜᴛᴏ ᴘʟʌʏ ᴘʟєʌsє ᴏɴ ʌᴜᴛᴏ ᴘʟʌʏ ʌɴᴅ ᴛʀʏ ʌɢʌɪɴ.")
+        return await message.reply_text(
+            "» ɴᴏᴛ ᴏɴ ʌᴜᴛᴏ ᴘʟᴀʏ. ᴘʟᴇᴀsᴇ ᴏɴ ᴀᴜᴛᴏᴘʟᴀʏ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ."
+        )
 
     check = db.get(chat_id)
     if not check:
         return
 
     old_mystic = check[0].get("mystic")
-    if old_mystic:
-        try:
-            await old_mystic.delete()
-        except:
-            pass
-
     popped = check.pop(0)
+
     try:
-        vidid = popped["vidid"]
-        related = await YouTube.get_related_videos(vidid)
-        if not related:
-            return
-
-        video_id = random.choice(related)
-        details, track_id = await YouTube.track(video_id, True)
-
-        await stream(
-            _,
-            old_mystic,
-            popped["user_id"],
-            details,
-            chat_id,
-            popped["by"],
-            popped["chat_id"],
-            video=True if popped["streamtype"] == "video" else False,
-            streamtype="youtube",
-            forceplay=True,
-        )
-    except:
+        if old_mystic:
+            await old_mystic.delete()
+    except Exception:
         pass
-      
+
+    vidid = popped.get("vidid")
+    if not vidid:
+        return
+
+    try:
+        related = await YouTube.get_related_videos(vidid, limit=10)
+    except Exception:
+        related = []
+
+    if not related:
+        return
+
+    candidates = list(related)
+    random.shuffle(candidates)
+
+    user_id = popped.get("user_id") or popped.get("userid") or popped.get("requested_by")
+    by = popped.get("by") or popped.get("user_name") or "Autoplay"
+    is_video = popped.get("streamtype") == "video"
+
+    # Try several recommendations. A single bad YouTube result must
+    # not terminate autoplay.
+    for item in candidates:
+        try:
+            if isinstance(item, dict):
+                video_id = item.get("id") or item.get("vidid") or item.get("link")
+            else:
+                video_id = str(item)
+
+            if not video_id:
+                continue
+
+            details, track_id = await YouTube.track(video_id, True)
+            if not details or not details.get("title"):
+                continue
+
+            await stream(
+                _,
+                old_mystic,
+                user_id,
+                details,
+                chat_id,
+                by,
+                popped.get("chat_id", chat_id),
+                video=is_video,
+                streamtype="youtube",
+                forceplay=True,
+            )
+            return
+        except Exception:
+            continue
+
+  
