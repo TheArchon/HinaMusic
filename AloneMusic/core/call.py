@@ -619,48 +619,6 @@ class Call(PyTgCalls):
                     datetime.now() + timedelta(minutes=1)
                 )
 
-    async def autoplay_next(self, chat_id: int, popped: dict) -> bool:
-        """Find and queue the next YouTube track for autoplay."""
-        if not popped:
-            return False
-
-        try:
-            vidid = popped.get("vidid")
-            related = await YouTube.get_related_videos(vidid, 15)
-            if not related:
-                return False
-
-            random.shuffle(related)
-            from AloneMusic.utils.stream.queue import put_queue
-
-            for video_id in related:
-                try:
-                    details, track_id = await YouTube.track(video_id, True)
-                    if not details or not details.get("title"):
-                        continue
-                    duration = details.get("duration_min")
-                    if not duration or str(duration) == "None":
-                        continue
-
-                    await put_queue(
-                        chat_id,
-                        popped.get("chat_id", chat_id),
-                        f"vid_{video_id}",
-                        details["title"],
-                        duration,
-                        popped.get("by", "Autoplay"),
-                        video_id,
-                        popped.get("user_id"),
-                        popped.get("streamtype", "audio"),
-                        forceplay=True,
-                    )
-                    return bool(db.get(chat_id))
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        return False
-
     @capture_internal_err
     async def change_stream(
         self,
@@ -693,8 +651,49 @@ class Call(PyTgCalls):
             # AUTOPLAY
             # -------------------------------
             if not check and popped and await is_autoplay_on(chat_id):
-                await self.autoplay_next(chat_id, popped)
-                check = db.get(chat_id)
+                # Keep autoplay self-contained: find a related YouTube video,
+                # resolve its metadata, then put it at the front of the queue.
+                # If one candidate fails, try another instead of silently
+                # ending playback.
+                try:
+                    vidid = popped.get("vidid")
+                    related = await YouTube.get_related_videos(vidid, 12)
+
+                    if related:
+                        random.shuffle(related)
+                        for video_id in related:
+                            try:
+                                details, track_id = await YouTube.track(
+                                    video_id, True
+                                )
+                                if not details or not details.get("title"):
+                                    continue
+                                if not details.get("vidid"):
+                                    continue
+                                if not details.get("duration_min"):
+                                    details["duration_min"] = "0:00"
+
+                                from AloneMusic.utils.stream.queue import put_queue
+
+                                await put_queue(
+                                    chat_id,
+                                    popped["chat_id"],
+                                    f"vid_{video_id}",
+                                    details["title"],
+                                    details["duration_min"],
+                                    popped["by"],
+                                    video_id,
+                                    popped["user_id"],
+                                    popped.get("streamtype", "audio"),
+                                    forceplay=True,
+                                )
+                                check = db.get(chat_id)
+                                if check:
+                                    break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
 
                 # --------------------------------
                 # QUEUE FINISHED
@@ -1127,13 +1126,18 @@ class Call(PyTgCalls):
                 _client=client,
             ):
                 if isinstance(update, types.StreamEnded):
-                    # PyTgCalls sends StreamEnded for both audio and video.
-                    # Handling only AUDIO breaks autoplay/skip when video mode
-                    # is active. Always advance the queue when a stream ends.
-                    await self.change_stream(
-                        _client,
-                        update.chat_id,
-                    )
+                    # PyTgCalls may report the end of a media stream as
+                    # AUDIO or VIDEO. Autoplay must run for both; otherwise
+                    # video-mode songs can stop without advancing.
+                    try:
+                        await self.change_stream(
+                            _client,
+                            update.chat_id,
+                        )
+                    except Exception as e:
+                        LOGGER.error(
+                            f"Autoplay stream-end handler failed for {update.chat_id}: {e}"
+                        )
 
                 elif isinstance(update, types.ChatUpdate):
                     if update.status in [
@@ -1147,4 +1151,4 @@ class Call(PyTgCalls):
 
 
 Alone = Call()
-    
+        
