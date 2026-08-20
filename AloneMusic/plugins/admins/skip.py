@@ -302,3 +302,4 @@ async def skip(cli, message: Message, _, chat_id):
             run = await update_stream_ui(chat_id, message.chat.id, None, img, caption, button)
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
+                                      
