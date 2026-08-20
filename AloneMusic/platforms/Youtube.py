@@ -39,67 +39,37 @@ os.makedirs(
 # =========================================================
 
 def time_to_seconds(time_value) -> int:
-    """
-    Convert:
-        HH:MM:SS
-        MM:SS
-        SS
-
-    to seconds.
-    """
-
     if not time_value:
         return 0
 
     try:
-        value = str(
-            time_value
-        ).strip()
+        value = str(time_value).strip()
 
         if not value:
             return 0
 
         parts = value.split(":")
-
         total = 0
 
         for part in parts:
-            total = (
-                total * 60
-                + int(part)
-            )
+            total = total * 60 + int(part)
 
         return total
 
-    except (
-        ValueError,
-        TypeError,
-    ):
+    except (ValueError, TypeError):
         return 0
 
 
 def extract_video_id(
     link: str,
 ) -> Optional[str]:
-    """
-    Extract YouTube video ID from:
-
-    youtube.com/watch?v=
-    youtu.be/
-    youtube.com/shorts/
-    youtube.com/embed/
-    youtube.com/live/
-    direct video ID
-    """
 
     if not link:
         return None
 
-    link = str(
-        link
-    ).strip()
+    link = str(link).strip()
 
-    # Direct YouTube video ID
+    # Direct video ID
     if re.fullmatch(
         r"[A-Za-z0-9_-]{11}",
         link,
@@ -107,22 +77,17 @@ def extract_video_id(
         return link
 
     try:
-        parsed = urlparse(
-            link
-        )
+        parsed = urlparse(link)
 
         host = (
             parsed.netloc
             .lower()
-            .replace(
-                "www.",
-                "",
-            )
+            .replace("www.", "")
         )
 
-        # ---------------------------------------------
-        # youtu.be/VIDEO_ID
-        # ---------------------------------------------
+        # =====================================================
+        # youtu.be
+        # =====================================================
 
         if host == "youtu.be":
 
@@ -132,16 +97,15 @@ def extract_video_id(
                 .split("/")[0]
             )
 
-            if video_id:
-                if re.fullmatch(
-                    r"[A-Za-z0-9_-]{11}",
-                    video_id,
-                ):
-                    return video_id
+            if re.fullmatch(
+                r"[A-Za-z0-9_-]{11}",
+                video_id,
+            ):
+                return video_id
 
-        # ---------------------------------------------
+        # =====================================================
         # youtube.com
-        # ---------------------------------------------
+        # =====================================================
 
         if (
             host == "youtube.com"
@@ -152,7 +116,6 @@ def extract_video_id(
                 parsed.query
             )
 
-            # watch?v=
             if query.get("v"):
 
                 video_id = query["v"][0]
@@ -195,16 +158,11 @@ def extract_video_id(
 def normalize_youtube_url(
     link: str,
 ) -> Optional[str]:
-    """
-    Return clean YouTube watch URL.
-    """
 
     if not link:
         return None
 
-    link = str(
-        link
-    ).strip()
+    link = str(link).strip()
 
     video_id = extract_video_id(
         link
@@ -229,9 +187,6 @@ async def _download_from_api(
     extension: str,
     timeout_seconds: int,
 ):
-    """
-    Download audio/video from Shruti API.
-    """
 
     video_id = extract_video_id(
         link
@@ -244,10 +199,6 @@ async def _download_from_api(
         DOWNLOAD_DIR,
         f"{video_id}.{extension}",
     )
-
-    # ---------------------------------------------
-    # Already downloaded
-    # ---------------------------------------------
 
     if (
         os.path.exists(file_path)
@@ -297,7 +248,6 @@ async def _download_from_api(
                     .lower()
                 )
 
-                # API returned JSON/error
                 if (
                     "application/json"
                     in content_type
@@ -310,16 +260,13 @@ async def _download_from_api(
                 ) as file:
 
                     async for chunk in (
-                        response.content
-                        .iter_chunked(
+                        response.content.iter_chunked(
                             256 * 1024
                         )
                     ):
 
                         if chunk:
-                            file.write(
-                                chunk
-                            )
+                            file.write(chunk)
 
         if (
             os.path.exists(temp_path)
@@ -340,46 +287,65 @@ async def _download_from_api(
 
     finally:
 
-        if os.path.exists(
-            temp_path
-        ):
+        if os.path.exists(temp_path):
 
             try:
-                os.remove(
-                    temp_path
-                )
+                os.remove(temp_path)
             except Exception:
                 pass
 
+
+# =========================================================
+# YT-DLP FALLBACK
+# =========================================================
 
 async def _download_with_ytdlp(
     link: str,
     media_type: str,
     extension: str,
 ) -> Optional[str]:
-    """Reliable fallback when the external download API is unavailable."""
-    video_id = extract_video_id(link)
+
+    video_id = extract_video_id(
+        link
+    )
+
     if not video_id:
         return None
 
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    outtmpl = os.path.join(DOWNLOAD_DIR, f"{video_id}.%(ext)s")
+    url = (
+        f"https://www.youtube.com/watch?v="
+        f"{video_id}"
+    )
+
+    outtmpl = os.path.join(
+        DOWNLOAD_DIR,
+        f"{video_id}.%(ext)s",
+    )
 
     if media_type == "audio":
+
         opts = {
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }
+            ],
         }
-        target = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+
+        target = os.path.join(
+            DOWNLOAD_DIR,
+            f"{video_id}.mp3",
+        )
+
     else:
+
         opts = {
             "format": "best[ext=mp4]/best",
             "outtmpl": outtmpl,
@@ -388,44 +354,84 @@ async def _download_with_ytdlp(
             "no_warnings": True,
             "merge_output_format": "mp4",
         }
-        target = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
+
+        target = os.path.join(
+            DOWNLOAD_DIR,
+            f"{video_id}.mp4",
+        )
 
     try:
+
         loop = asyncio.get_running_loop()
+
         await loop.run_in_executor(
             None,
-            lambda: yt_dlp.YoutubeDL(opts).download([url]),
+            lambda: yt_dlp.YoutubeDL(
+                opts
+            ).download([url]),
         )
-        if os.path.isfile(target) and os.path.getsize(target) > 0:
+
+        if (
+            os.path.isfile(target)
+            and os.path.getsize(target) > 0
+        ):
             return target
 
-        # yt-dlp may choose a different extension; find the newest file.
-        prefix = os.path.join(DOWNLOAD_DIR, video_id + ".")
+        prefix = os.path.join(
+            DOWNLOAD_DIR,
+            video_id + ".",
+        )
+
         candidates = [
-            p for p in glob.glob(prefix + "*")
-            if os.path.isfile(p) and os.path.getsize(p) > 0
-            and not p.endswith(".part")
+            p
+            for p in glob.glob(
+                prefix + "*"
+            )
+            if (
+                os.path.isfile(p)
+                and os.path.getsize(p) > 0
+                and not p.endswith(".part")
+            )
         ]
+
         if candidates:
-            return max(candidates, key=os.path.getmtime)
+
+            return max(
+                candidates,
+                key=os.path.getmtime,
+            )
+
     except Exception:
         return None
+
     return None
 
+
+# =========================================================
+# DOWNLOAD SONG
+# =========================================================
 
 async def download_song(
     link: str,
 ) -> Optional[str]:
 
-    link = normalize_youtube_url(link)
+    link = normalize_youtube_url(
+        link
+    )
+
+    if not link:
+        return None
+
     result = await _download_from_api(
         link,
         media_type="audio",
         extension="mp3",
         timeout_seconds=300,
     )
+
     if result:
         return result
+
     return await _download_with_ytdlp(
         link,
         media_type="audio",
@@ -433,19 +439,31 @@ async def download_song(
     )
 
 
+# =========================================================
+# DOWNLOAD VIDEO
+# =========================================================
+
 async def download_video(
     link: str,
 ) -> Optional[str]:
 
-    link = normalize_youtube_url(link)
+    link = normalize_youtube_url(
+        link
+    )
+
+    if not link:
+        return None
+
     result = await _download_from_api(
         link,
         media_type="video",
         extension="mp4",
         timeout_seconds=600,
     )
+
     if result:
         return result
+
     return await _download_with_ytdlp(
         link,
         media_type="video",
@@ -478,6 +496,76 @@ class YouTubeAPI:
             r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
         )
 
+        # =================================================
+        # AUTOPLAY HISTORY
+        # =================================================
+
+        self.autoplay_history = {}
+
+        self.autoplay_queues = {}
+
+    # =====================================================
+    # AUTOPLAY SESSION HELPERS
+    # =====================================================
+
+    def _get_history(
+        self,
+        session_id=None,
+    ):
+
+        key = str(
+            session_id
+            if session_id is not None
+            else "global"
+        )
+
+        if key not in self.autoplay_history:
+            self.autoplay_history[key] = set()
+
+        return self.autoplay_history[key]
+
+    def clear_autoplay_history(
+        self,
+        session_id=None,
+    ):
+
+        key = str(
+            session_id
+            if session_id is not None
+            else "global"
+        )
+
+        self.autoplay_history.pop(
+            key,
+            None,
+        )
+
+        self.autoplay_queues.pop(
+            key,
+            None,
+        )
+
+    def mark_autoplay_played(
+        self,
+        video_id: str,
+        session_id=None,
+    ):
+
+        video_id = extract_video_id(
+            str(video_id)
+        )
+
+        if not video_id:
+            return
+
+        history = self._get_history(
+            session_id
+        )
+
+        history.add(
+            video_id
+        )
+
     # =====================================================
     # EXISTS
     # =====================================================
@@ -508,7 +596,7 @@ class YouTubeAPI:
         )
 
     # =====================================================
-    # GET URL FROM MESSAGE
+    # GET URL
     # =====================================================
 
     async def url(
@@ -547,7 +635,6 @@ class YouTubeAPI:
                     ):
 
                         try:
-
                             return text[
                                 entity.offset:
                                 entity.offset
@@ -586,7 +673,6 @@ class YouTubeAPI:
                     ):
 
                         try:
-
                             return caption[
                                 entity.offset:
                                 entity.offset
@@ -605,7 +691,7 @@ class YouTubeAPI:
                             return entity.url
 
             # -----------------------------------------
-            # FALLBACK TEXT SEARCH
+            # FALLBACK
             # -----------------------------------------
 
             text = (
@@ -642,10 +728,8 @@ class YouTubeAPI:
         if not link:
             return []
 
-        clean_link = (
-            normalize_youtube_url(
-                link
-            )
+        clean_link = normalize_youtube_url(
+            link
         )
 
         try:
@@ -669,17 +753,24 @@ class YouTubeAPI:
             return []
 
     # =====================================================
-    # RELATED VIDEOS / AUTOPLAY
+    # RELATED VIDEOS / AUTOPLAY FIX
     # =====================================================
 
     async def get_related_videos(
         self,
         video_id: str,
         limit: int = 10,
+        exclude_ids=None,
+        session_id=None,
     ):
         """
-        Return related/similar YouTube
-        video IDs for autoplay.
+        Autoplay duplicate protection.
+
+        Prevents:
+        1. Current song repeating
+        2. Same song appearing twice
+        3. Previously played song repeating
+        4. Same result being selected again
         """
 
         if not video_id:
@@ -694,9 +785,48 @@ class YouTubeAPI:
             if not video_id:
                 return []
 
-            # -----------------------------------------
-            # Get current video
-            # -----------------------------------------
+            # ---------------------------------------------
+            # HISTORY
+            # ---------------------------------------------
+
+            history = self._get_history(
+                session_id
+            )
+
+            excluded = set()
+
+            # Current song
+            excluded.add(
+                video_id
+            )
+
+            # Previously played
+            excluded.update(
+                history
+            )
+
+            # Externally supplied IDs
+            if exclude_ids:
+
+                for item in exclude_ids:
+
+                    try:
+
+                        item_id = extract_video_id(
+                            str(item)
+                        )
+
+                        if item_id:
+                            excluded.add(
+                                item_id
+                            )
+
+                    except Exception:
+                        continue
+
+            # ---------------------------------------------
+            # CURRENT VIDEO
+            # ---------------------------------------------
 
             current = await self._search(
                 self.base + video_id,
@@ -708,26 +838,40 @@ class YouTubeAPI:
 
             current_data = current[0]
 
-            title = current_data.get(
-                "title"
-            )
+            title = (
+                current_data.get("title")
+                or ""
+            ).strip()
 
             if not title:
                 return []
 
-            # -----------------------------------------
-            # Search similar videos
-            # -----------------------------------------
+            # ---------------------------------------------
+            # SEARCH MORE RESULTS
+            # ---------------------------------------------
+
+            search_limit = max(
+                int(limit) * 8,
+                30,
+            )
 
             results = await self._search(
                 title,
-                limit + 5,
+                search_limit,
             )
 
             if not results:
                 return []
 
             related = []
+
+            seen = set(
+                excluded
+            )
+
+            # ---------------------------------------------
+            # UNIQUE RESULTS
+            # ---------------------------------------------
 
             for item in results:
 
@@ -741,31 +885,119 @@ class YouTubeAPI:
                 if not related_id:
                     continue
 
-                # Don't repeat current video
-                if (
+                related_id = str(
                     related_id
-                    == video_id
+                ).strip()
+
+                if not re.fullmatch(
+                    r"[A-Za-z0-9_-]{11}",
+                    related_id,
                 ):
                     continue
 
-                # Don't add duplicates
-                if (
-                    related_id
-                    in related
-                ):
+                # Never repeat
+                if related_id in seen:
                     continue
+
+                seen.add(
+                    related_id
+                )
 
                 related.append(
                     related_id
                 )
 
-                if len(related) >= limit:
+                # Reserve immediately
+                # so it cannot be returned twice
+                history.add(
+                    related_id
+                )
+
+                if len(related) >= int(limit):
                     break
 
             return related
 
         except Exception:
             return []
+
+    # =====================================================
+    # NEXT AUTOPLAY SONG
+    # =====================================================
+
+    async def get_next_autoplay(
+        self,
+        video_id: str,
+        session_id=None,
+    ):
+        """
+        Get ONE new autoplay song.
+
+        Every call tries to return a new ID.
+        """
+
+        if not video_id:
+            return None
+
+        try:
+
+            history = self._get_history(
+                session_id
+            )
+
+            current_id = extract_video_id(
+                str(video_id)
+            )
+
+            if not current_id:
+                return None
+
+            history.add(
+                current_id
+            )
+
+            # -----------------------------------------
+            # Get multiple candidates
+            # -----------------------------------------
+
+            candidates = await self.get_related_videos(
+                current_id,
+                limit=15,
+                session_id=session_id,
+            )
+
+            if not candidates:
+                return None
+
+            # -----------------------------------------
+            # Select first unused
+            # -----------------------------------------
+
+            for candidate in candidates:
+
+                candidate_id = extract_video_id(
+                    str(candidate)
+                )
+
+                if not candidate_id:
+                    continue
+
+                if candidate_id == current_id:
+                    continue
+
+                if candidate_id in history:
+                    continue
+
+                history.add(
+                    candidate_id
+                )
+
+                return candidate_id
+
+            return None
+
+        except Exception:
+            return None
 
     # =====================================================
     # DETAILS
@@ -798,9 +1030,7 @@ class YouTubeAPI:
                 "0:00",
                 0,
                 None,
-                extract_video_id(
-                    link
-                ),
+                extract_video_id(link),
             )
 
         data = result[0]
@@ -815,16 +1045,12 @@ class YouTubeAPI:
             or "0:00"
         )
 
-        duration_sec = (
-            time_to_seconds(
-                duration_min
-            )
+        duration_sec = time_to_seconds(
+            duration_min
         )
 
         thumbnails = (
-            data.get(
-                "thumbnails"
-            )
+            data.get("thumbnails")
             or []
         )
 
@@ -838,15 +1064,11 @@ class YouTubeAPI:
             )
 
             if thumbnail:
-                thumbnail = (
-                    thumbnail.split("?")[0]
-                )
+                thumbnail = thumbnail.split("?")[0]
 
         vidid = (
             data.get("id")
-            or extract_video_id(
-                link
-            )
+            or extract_video_id(link)
         )
 
         return (
@@ -951,9 +1173,7 @@ class YouTubeAPI:
             return None
 
         thumbnails = (
-            result[0].get(
-                "thumbnails"
-            )
+            result[0].get("thumbnails")
             or []
         )
 
@@ -1000,10 +1220,8 @@ class YouTubeAPI:
 
         try:
 
-            downloaded_file = (
-                await download_video(
-                    link
-                )
+            downloaded_file = await download_video(
+                link
             )
 
             if downloaded_file:
@@ -1075,6 +1293,7 @@ class YouTubeAPI:
             )
 
             ids = []
+            seen = set()
 
             for data in entries[
                 :int(limit)
@@ -1083,14 +1302,16 @@ class YouTubeAPI:
                 if not data:
                     continue
 
-                vid = data.get(
-                    "id"
-                )
+                vid = data.get("id")
 
-                if vid:
-                    ids.append(
-                        vid
-                    )
+                if not vid:
+                    continue
+
+                if vid in seen:
+                    continue
+
+                seen.add(vid)
+                ids.append(vid)
 
             return ids
 
@@ -1135,9 +1356,7 @@ class YouTubeAPI:
         )
 
         duration_min = (
-            data.get(
-                "duration"
-            )
+            data.get("duration")
             or "0:00"
         )
 
@@ -1150,15 +1369,14 @@ class YouTubeAPI:
         )
 
         if not yturl and vidid:
+
             yturl = (
                 self.base
                 + vidid
             )
 
         thumbnails = (
-            data.get(
-                "thumbnails"
-            )
+            data.get("thumbnails")
             or []
         )
 
@@ -1172,9 +1390,7 @@ class YouTubeAPI:
             )
 
             if thumbnail:
-                thumbnail = (
-                    thumbnail.split("?")[0]
-                )
+                thumbnail = thumbnail.split("?")[0]
 
         track_details = {
             "title": title,
@@ -1244,10 +1460,7 @@ class YouTubeAPI:
                     )
 
                 for fmt in (
-                    info.get(
-                        "formats",
-                        [],
-                    )
+                    info.get("formats", [])
                 ):
 
                     try:
@@ -1337,9 +1550,7 @@ class YouTubeAPI:
                 query_type = 0
 
             if query_type >= len(result):
-                query_type = (
-                    len(result) - 1
-                )
+                query_type = len(result) - 1
 
             data = result[
                 query_type
@@ -1351,9 +1562,7 @@ class YouTubeAPI:
             )
 
             duration_min = (
-                data.get(
-                    "duration"
-                )
+                data.get("duration")
                 or "0:00"
             )
 
@@ -1362,9 +1571,7 @@ class YouTubeAPI:
             )
 
             thumbnails = (
-                data.get(
-                    "thumbnails"
-                )
+                data.get("thumbnails")
                 or []
             )
 
@@ -1378,9 +1585,7 @@ class YouTubeAPI:
                 )
 
                 if thumbnail:
-                    thumbnail = (
-                        thumbnail.split("?")[0]
-                    )
+                    thumbnail = thumbnail.split("?")[0]
 
             return (
                 title,
@@ -1450,17 +1655,15 @@ class YouTubeAPI:
         try:
 
             if video:
-                downloaded_file = (
-                    await download_video(
-                        link
-                    )
+
+                downloaded_file = await download_video(
+                    link
                 )
 
             else:
-                downloaded_file = (
-                    await download_song(
-                        link
-                    )
+
+                downloaded_file = await download_song(
+                    link
                 )
 
             if (
