@@ -11,7 +11,6 @@ from pyrogram import filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import random
-import logging
 from AloneMusic import app, YouTube
 from AloneMusic.core.call import Alone
 from AloneMusic.utils.database import (autoplay_off, autoplay_on,
@@ -19,8 +18,6 @@ from AloneMusic.utils.database import (autoplay_off, autoplay_on,
 from AloneMusic.utils.decorators import language, AdminRightsCheck
 from config import BANNED_USERS
 from strings import get_string
-
-logger = logging.getLogger(__name__)
 
 
 @app.on_message(filters.command(["autoplay"]) & filters.group & ~BANNED_USERS)
@@ -55,7 +52,6 @@ async def autoplay_command(client, message: Message, _):
     else:
         await message.reply_text("» ɪɴᴠʌʟɪᴅ ʌʀɢᴜϻєɴᴛ. ᴜsє ᴏɴ/ᴏғғ.")
 
-
 @app.on_message(filters.command(["askip"]) & filters.group & ~BANNED_USERS)
 @AdminRightsCheck
 async def askip_command(client, message: Message, _, chat_id):
@@ -63,104 +59,40 @@ async def askip_command(client, message: Message, _, chat_id):
     from AloneMusic.utils.stream.stream import stream
 
     if not await is_autoplay_on(chat_id):
-        return await message.reply_text(
-            "» ɴᴏᴛ ᴏɴ ʌᴜᴛᴏ ᴘʟᴀʏ. ᴘʟᴇᴀsᴇ ᴏɴ ᴀᴜᴛᴏᴘʟᴀʏ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ."
-        )
+        return await message.reply_text("» ɴᴏᴛ ᴏɴ ʌᴜᴛᴏ ᴘʟʌʏ ᴘʟєʌsє ᴏɴ ʌᴜᴛᴏ ᴘʟʌʏ ʌɴᴅ ᴛʀʏ ʌɢʌɪɴ.")
 
     check = db.get(chat_id)
     if not check:
         return
 
     old_mystic = check[0].get("mystic")
-    popped = check.pop(0)
-
-    try:
-        if old_mystic:
-            await old_mystic.delete()
-    except Exception:
-        pass
-
-    vidid = popped.get("vidid")
-    if not vidid:
-        return
-
-    try:
-        related = await YouTube.get_related_videos(vidid, limit=10)
-    except Exception as e:
-        logger.exception("askip: get_related_videos failed for %s: %s", vidid, e)
-        related = []
-
-    logger.info("askip: related for %s -> %s", vidid, related)
-
-    if not related:
-        return
-
-    candidates = list(related)
-    random.shuffle(candidates)
-
-    user_id = popped.get("user_id") or popped.get("userid") or popped.get("requested_by")
-    by = popped.get("by") or popped.get("user_name") or "Autoplay"
-    is_video = popped.get("streamtype") == "video"
-
-    # Try several recommendations. A single bad YouTube result must
-    # not terminate autoplay.
-    for item in candidates:
+    if old_mystic:
         try:
-            if isinstance(item, dict):
-                video_id = item.get("id") or item.get("vidid") or item.get("link")
-            else:
-                video_id = str(item)
+            await old_mystic.delete()
+        except:
+            pass
 
-            if not video_id:
-                continue
+    popped = check.pop(0)
+    try:
+        vidid = popped["vidid"]
+        related = await YouTube.get_related_videos(vidid)
+        if not related:
+            return
 
-            try:
-                details, track_id = await YouTube.track(video_id, True)
-            except Exception as e:
-                logger.exception("askip: failed to fetch track details for %s: %s", video_id, e)
-                continue
+        video_id = random.choice(related)
+        details, track_id = await YouTube.track(video_id, True)
 
-            if not details or not details.get("title"):
-                continue
-
-            try:
-                await stream(
-                    _,
-                    old_mystic,
-                    user_id,
-                    details,
-                    chat_id,
-                    by,
-                    popped.get("chat_id", chat_id),
-                    video=is_video,
-                    streamtype="youtube",
-                    forceplay=True,
-                )
-                return
-            except Exception as e:
-                logger.exception("askip: streaming failed for %s: %s", video_id, e)
-                # fallback: queue the candidate as forceplay
-                try:
-                    from AloneMusic.utils.stream.queue import put_queue
-                    await put_queue(
-                        chat_id,
-                        popped.get("chat_id", chat_id),
-                        f"vid_{video_id}",
-                        details.get("title", "Unknown"),
-                        details.get("duration_min", "0:00"),
-                        popped.get("by"),
-                        video_id,
-                        user_id,
-                        popped.get("streamtype"),
-                        forceplay=True,
-                        mystic=None,
-                    )
-                    logger.info("askip: queued fallback vid_%s for chat %s", video_id, chat_id)
-                    return
-                except Exception as e:
-                    logger.exception("askip: fallback queue insert failed for %s: %s", video_id, e)
-                    continue
-        except Exception:
-            continue
-
-  
+        await stream(
+            _,
+            old_mystic,
+            popped["user_id"],
+            details,
+            chat_id,
+            popped["by"],
+            popped["chat_id"],
+            video=True if popped["streamtype"] == "video" else False,
+            streamtype="youtube",
+            forceplay=True,
+        )
+    except:
+        pass
