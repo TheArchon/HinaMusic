@@ -490,6 +490,91 @@ class YouTubeAPI:
                 logging.warning(f"Local slider fallback failed: {e}")
         return None, None, None, None
 
+    async def get_related_videos(self, vidid: str, limit: int = 10):
+        """Return playable YouTube video IDs for autoplay.
+
+        The API search endpoint is tried first.  If it is unavailable, use
+        youtubesearchpython as a local fallback.  The current track is
+        excluded so /skip can never immediately select the same song.
+        """
+        if not vidid:
+            return []
+
+        current_id = extract_vidid(str(vidid)) or str(vidid)
+        watch_url = self.base + current_id
+        results = []
+
+        # API search: the backend can resolve a YouTube URL to related/search
+        # results without requiring a second metadata request here.
+        if API_URL:
+            try:
+                client = await self.get_client()
+                params = {"query": watch_url, "limit": max(10, int(limit))}
+                if API_KEY:
+                    params["api_key"] = API_KEY
+                response = await client.get(f"{API_URL}/search", params=params)
+                if response.status_code == 200:
+                    data = response.json()
+                    for item in data.get("result", []):
+                        item_id = item.get("id") or extract_vidid(item.get("link", ""))
+                        if item_id and item_id != current_id:
+                            results.append(item_id)
+                        if len(results) >= limit:
+                            break
+            except Exception as e:
+                logging.warning(f"Autoplay API search failed for {current_id}: {e}")
+
+        # Local fallback.
+        if not results and VideosSearch:
+            try:
+                search = VideosSearch(watch_url, limit=max(10, int(limit) + 2))
+                data = await search.next()
+                for item in (data or {}).get("result", []):
+                    item_id = item.get("id")
+                    if item_id and item_id != current_id:
+                        results.append(item_id)
+                    if len(results) >= limit:
+                        break
+            except Exception as e:
+                logging.warning(f"Autoplay local search failed for {current_id}: {e}")
+
+        # Last fallback: search by the current video's title.
+        # This is deliberately independent from the related-video endpoint:
+        # if that endpoint returns an empty list, autoplay must still have
+        # another way to obtain the next track.
+        if not results:
+            try:
+                title = await self.title(watch_url)
+                if title:
+                    query = f"{title} song"
+                    if API_URL:
+                        client = await self.get_client()
+                        params = {"query": query, "limit": max(10, int(limit) + 3)}
+                        if API_KEY:
+                            params["api_key"] = API_KEY
+                        response = await client.get(f"{API_URL}/search", params=params)
+                        if response.status_code == 200:
+                            for item in response.json().get("result", []):
+                                item_id = item.get("id") or extract_vidid(item.get("link", ""))
+                                if item_id and item_id != current_id and item_id not in results:
+                                    results.append(item_id)
+                                if len(results) >= limit:
+                                    break
+                    if not results and VideosSearch:
+                        search = VideosSearch(query, limit=max(10, int(limit) + 3))
+                        data = await search.next()
+                        for item in (data or {}).get("result", []):
+                            item_id = item.get("id")
+                            if item_id and item_id != current_id and item_id not in results:
+                                results.append(item_id)
+                            if len(results) >= limit:
+                                break
+            except Exception as e:
+                logging.warning(f"Autoplay title search failed for {current_id}: {e}")
+
+        # De-duplicate while preserving order.
+        return list(dict.fromkeys(results))[:limit]
+
     async def prefetch(self, link: str, video: bool = False):
         """Triggers background pre-fetching on the API"""
         if not API_URL:
@@ -734,3 +819,4 @@ class YouTubeAPI:
 
 
 YouTube = YouTubeAPI()
+    
