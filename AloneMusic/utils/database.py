@@ -7,14 +7,11 @@
 #
 # All rights reserved.
 
-import logging
 import random
 from typing import Dict, List, Union
 
 from AloneMusic import userbot
 from AloneMusic.core.mongo import mongodb
-
-logger = logging.getLogger(__name__)
 
 authdb = mongodb.adminauth
 authuserdb = mongodb.authuser
@@ -63,33 +60,15 @@ skipmode = {}
 filters = {}
 
 
-async def _get_filters(chat_id: int) -> Dict[str, dict]:
-    # Helper to fetch filters map from memory or DB
-    existing = filters.get(chat_id)
-    if existing is not None:
-        return existing
-    dbrec = await filterdb.find_one({"chat_id": chat_id})
-    if not dbrec:
-        filters[chat_id] = {}
-        return {}
-    fmap = dbrec.get("filters", {})
-    filters[chat_id] = fmap
-    return fmap
-
-
 async def save_filter(chat_id: int, name: str, _filter: dict):
     name = name.lower().strip()
     _filters = await _get_filters(chat_id)
     _filters[name] = _filter
-    try:
-        await filterdb.update_one(
-            {"chat_id": chat_id},
-            {"$set": {"filters": _filters}},
-            upsert=True,
-        )
-    except Exception as e:
-        logger.exception("save_filter: failed to save filter for %s: %s", chat_id, e)
-
+    await filtersdb.update_one(
+        {"chat_id": chat_id},
+        {"$set": {"filters": _filters}},
+        upsert=True,
+    )
 
 async def get_assistant_number(chat_id: int) -> str:
     assistant = assistantdict.get(chat_id)
@@ -128,36 +107,35 @@ async def set_assistant(chat_id):
         {"$set": {"assistant": ran_assistant}},
         upsert=True,
     )
-    userbot_client = await get_client(ran_assistant)
-    return userbot_client
+    userbot = await get_client(ran_assistant)
+    return userbot
 
 
 async def get_assistant(chat_id: int) -> str:
     from AloneMusic.core.userbot import assistants
 
     assistant = assistantdict.get(chat_id)
-    if assistant is None:
+    if not assistant:
         dbassistant = await assdb.find_one({"chat_id": chat_id})
         if not dbassistant:
-            userbot_client = await set_assistant(chat_id)
-            return userbot_client
+            userbot = await set_assistant(chat_id)
+            return userbot
         else:
             got_assis = dbassistant["assistant"]
             if got_assis in assistants:
                 assistantdict[chat_id] = got_assis
-                userbot_client = await get_client(got_assis)
-                return userbot_client
+                userbot = await get_client(got_assis)
+                return userbot
             else:
-                userbot_client = await set_assistant(chat_id)
-                return userbot_client
+                userbot = await set_assistant(chat_id)
+                return userbot
     else:
-        from AloneMusic.core.userbot import assistants as _assistants
-        if assistant in _assistants:
-            userbot_client = await get_client(assistant)
-            return userbot_client
+        if assistant in assistants:
+            userbot = await get_client(assistant)
+            return userbot
         else:
-            userbot_client = await set_assistant(chat_id)
-            return userbot_client
+            userbot = await set_assistant(chat_id)
+            return userbot
 
 
 async def set_calls_assistant(chat_id):
@@ -177,7 +155,7 @@ async def group_assistant(self, chat_id: int) -> int:
     from AloneMusic.core.userbot import assistants
 
     assistant = assistantdict.get(chat_id)
-    if assistant is None:
+    if not assistant:
         dbassistant = await assdb.find_one({"chat_id": chat_id})
         if not dbassistant:
             assis = await set_calls_assistant(chat_id)
@@ -185,6 +163,7 @@ async def group_assistant(self, chat_id: int) -> int:
             assis = dbassistant["assistant"]
             if assis in assistants:
                 assistantdict[chat_id] = assis
+                assis = assis
             else:
                 assis = await set_calls_assistant(chat_id)
     else:
@@ -206,7 +185,7 @@ async def group_assistant(self, chat_id: int) -> int:
 
 async def is_skipmode(chat_id: int) -> bool:
     mode = skipmode.get(chat_id)
-    if mode is None:
+    if not mode:
         user = await skipdb.find_one({"chat_id": chat_id})
         if not user:
             skipmode[chat_id] = True
@@ -232,7 +211,7 @@ async def skip_off(chat_id: int):
 
 async def get_upvote_count(chat_id: int) -> int:
     mode = count.get(chat_id)
-    if mode is None:
+    if not mode:
         mode = await countdb.find_one({"chat_id": chat_id})
         if not mode:
             return 5
@@ -338,7 +317,7 @@ async def thumb_off(chat_id: int):
 
 async def get_loop(chat_id: int) -> int:
     lop = loop.get(chat_id)
-    if lop is None:
+    if not lop:
         return 0
     return lop
 
@@ -349,7 +328,7 @@ async def set_loop(chat_id: int, mode: int):
 
 async def get_cmode(chat_id: int) -> int:
     mode = channelconnect.get(chat_id)
-    if mode is None:
+    if not mode:
         mode = await channeldb.find_one({"chat_id": chat_id})
         if not mode:
             return None
@@ -367,7 +346,7 @@ async def set_cmode(chat_id: int, mode: int):
 
 async def get_playtype(chat_id: int) -> str:
     mode = playtype.get(chat_id)
-    if mode is None:
+    if not mode:
         mode = await playtypedb.find_one({"chat_id": chat_id})
         if not mode:
             playtype[chat_id] = "Everyone"
@@ -386,7 +365,7 @@ async def set_playtype(chat_id: int, mode: str):
 
 async def get_playmode(chat_id: int) -> str:
     mode = playmode.get(chat_id)
-    if mode is None:
+    if not mode:
         mode = await playmodedb.find_one({"chat_id": chat_id})
         if not mode:
             playmode[chat_id] = "Direct"
@@ -405,7 +384,7 @@ async def set_playmode(chat_id: int, mode: str):
 
 async def get_lang(chat_id: int) -> str:
     mode = langm.get(chat_id)
-    if mode is None:
+    if not mode:
         lang = await langdb.find_one({"chat_id": chat_id})
         if not lang:
             langm[chat_id] = "en"
@@ -422,7 +401,7 @@ async def set_lang(chat_id: int, lang: str):
 
 async def is_music_playing(chat_id: int) -> bool:
     mode = pause.get(chat_id)
-    if mode is None:
+    if not mode:
         return False
     return mode
 
@@ -440,7 +419,10 @@ async def get_active_chats() -> list:
 
 
 async def is_active_chat(chat_id: int) -> bool:
-    return chat_id in active
+    if chat_id not in active:
+        return False
+    else:
+        return True
 
 
 async def add_active_chat(chat_id: int):
@@ -458,7 +440,10 @@ async def get_active_video_chats() -> list:
 
 
 async def is_active_video_chat(chat_id: int) -> bool:
-    return chat_id in activevideo
+    if chat_id not in activevideo:
+        return False
+    else:
+        return True
 
 
 async def add_active_video_chat(chat_id: int):
@@ -480,7 +465,7 @@ async def check_nonadmin_chat(chat_id: int) -> bool:
 
 async def is_nonadmin_chat(chat_id: int) -> bool:
     mode = nonadmin.get(chat_id)
-    if mode is None:
+    if not mode:
         user = await authdb.find_one({"chat_id": chat_id})
         if not user:
             nonadmin[chat_id] = False
@@ -630,15 +615,18 @@ async def _get_authusers(chat_id: int) -> Dict[str, int]:
     _notes = await authuserdb.find_one({"chat_id": chat_id})
     if not _notes:
         return {}
-    return _notes.get("notes", {})
+    return _notes["notes"]
 
 
 async def get_authuser_names(chat_id: int) -> List[str]:
-    notes = await _get_authusers(chat_id)
-    return list(notes.keys())
+    _notes = []
+    for note in await _get_authusers(chat_id):
+        _notes.append(note)
+    return _notes
 
 
 async def get_authuser(chat_id: int, name: str) -> Union[bool, dict]:
+    name = name
     _notes = await _get_authusers(chat_id)
     if name in _notes:
         return _notes[name]
@@ -647,6 +635,7 @@ async def get_authuser(chat_id: int, name: str) -> Union[bool, dict]:
 
 
 async def save_authuser(chat_id: int, name: str, note: dict):
+    name = name
     _notes = await _get_authusers(chat_id)
     _notes[name] = note
 
@@ -657,6 +646,7 @@ async def save_authuser(chat_id: int, name: str, note: dict):
 
 async def delete_authuser(chat_id: int, name: str) -> bool:
     notesd = await _get_authusers(chat_id)
+    name = name
     if name in notesd:
         del notesd[name]
         await authuserdb.update_one(
@@ -715,11 +705,10 @@ async def add_sudo(user_id: int) -> bool:
 
 async def remove_sudo(user_id: int) -> bool:
     sudoers = await get_sudoers()
-    if user_id in sudoers:
-        sudoers.remove(user_id)
-        await sudoersdb.update_one(
-            {"sudo": "sudo"}, {"$set": {"sudoers": sudoers}}, upsert=True
-        )
+    sudoers.remove(user_id)
+    await sudoersdb.update_one(
+        {"sudo": "sudo"}, {"$set": {"sudoers": sudoers}}, upsert=True
+    )
     return True
 
 
@@ -745,22 +734,22 @@ async def is_banned_user(user_id: int) -> bool:
 
 
 async def add_banned_user(user_id: int):
-    is_banned = await is_banned_user(user_id)
-    if is_banned:
+    is_gbanned = await is_banned_user(user_id)
+    if is_gbanned:
         return
     return await blockeddb.insert_one({"user_id": user_id})
 
 
 async def remove_banned_user(user_id: int):
-    is_banned = await is_banned_user(user_id)
-    if not is_banned:
+    is_gbanned = await is_banned_user(user_id)
+    if not is_gbanned:
         return
     return await blockeddb.delete_one({"user_id": user_id})
 
 
 async def get_filter(chat_id: int) -> str:
     mode = filters.get(chat_id)
-    if mode is None:
+    if not mode:
         mode = await filterdb.find_one({"chat_id": chat_id})
         if not mode:
             filters[chat_id] = "Normal"
