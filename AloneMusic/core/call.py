@@ -285,4 +285,4 @@ class Call(PyTgCalls):
             db[chat_id][0]["old_second"] = db[chat_id][0]["seconds"]
             db[chat_id][0]["played"] = con_seconds
             db[chat_id][0]["dur"] = duration
-{
+            return
