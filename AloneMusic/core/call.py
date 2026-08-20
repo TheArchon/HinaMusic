@@ -645,34 +645,49 @@ class Call(PyTgCalls):
                         if not related:
                             return await _clear_(chat_id)
 
-                        video_id = random.choice(related)
-
-                        try:
-                            details, track_id = await YouTube.track(
-                                video_id,
-                                True,
-                            )
-
-                            if not details.get("title"):
-                                raise Exception("no details")
-
-                        except:
-                            raise Exception("fetch fail")
+                        # Try several related videos.  A single unavailable
+                        # YouTube result must not terminate the autoplay
+                        # chain.
+                        candidates = list(related)
+                        random.shuffle(candidates)
 
                         from AloneMusic.utils.stream.queue import put_queue
 
-                        await put_queue(
-                            chat_id,
-                            popped["chat_id"],
-                            f"vid_{video_id}",
-                            details["title"],
-                            details["duration_min"],
-                            popped["by"],
-                            video_id,
-                            popped["user_id"],
-                            popped["streamtype"],
-                            forceplay=True,
-                        )
+                        queued_next = False
+                        for video_id in candidates:
+                            try:
+                                details, track_id = await YouTube.track(
+                                    video_id,
+                                    True,
+                                )
+
+                                if not details or not details.get("title"):
+                                    continue
+
+                                duration = details.get("duration_min")
+                                if not duration:
+                                    continue
+
+                                await put_queue(
+                                    chat_id,
+                                    popped["chat_id"],
+                                    f"vid_{video_id}",
+                                    details["title"],
+                                    duration,
+                                    popped["by"],
+                                    video_id,
+                                    popped["user_id"],
+                                    popped["streamtype"],
+                                    forceplay=True,
+                                )
+
+                                queued_next = True
+                                break
+                            except Exception:
+                                continue
+
+                        if not queued_next:
+                            return await _clear_(chat_id)
 
                         check = db.get(chat_id)
 
@@ -1110,13 +1125,18 @@ class Call(PyTgCalls):
                 _client=client,
             ):
                 if isinstance(update, types.StreamEnded):
-                    # Trigger the queue/autoplay handler for BOTH audio and
-                    # video streams.  The old code handled AUDIO only, so
-                    # autoplay could stop after a video/changed stream.
-                    await self.change_stream(
-                        _client,
-                        update.chat_id,
-                    )
+                    # A stream can end as AUDIO or VIDEO.  Autoplay must
+                    # advance the queue for either type; restricting this
+                    # callback to AUDIO makes video/autoplay chains stop.
+                    try:
+                        await self.change_stream(
+                            _client,
+                            update.chat_id,
+                        )
+                    except Exception:
+                        # Never let an end-of-stream callback kill the
+                        # PyTgCalls update handler.
+                        pass
 
                 elif isinstance(update, types.ChatUpdate):
                     if update.status in [
@@ -1130,4 +1150,4 @@ class Call(PyTgCalls):
 
 
 Alone = Call()
-                                              
+            
