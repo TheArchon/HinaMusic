@@ -1,5 +1,7 @@
 import os
 import re
+import asyncio
+import glob
 from typing import Optional, Union
 from urllib.parse import urlparse, parse_qs
 
@@ -350,15 +352,84 @@ async def _download_from_api(
                 pass
 
 
+async def _download_with_ytdlp(
+    link: str,
+    media_type: str,
+    extension: str,
+) -> Optional[str]:
+    """Reliable fallback when the external download API is unavailable."""
+    video_id = extract_video_id(link)
+    if not video_id:
+        return None
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    outtmpl = os.path.join(DOWNLOAD_DIR, f"{video_id}.%(ext)s")
+
+    if media_type == "audio":
+        opts = {
+            "format": "bestaudio/best",
+            "outtmpl": outtmpl,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }],
+        }
+        target = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
+    else:
+        opts = {
+            "format": "best[ext=mp4]/best",
+            "outtmpl": outtmpl,
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+            "merge_output_format": "mp4",
+        }
+        target = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
+
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: yt_dlp.YoutubeDL(opts).download([url]),
+        )
+        if os.path.isfile(target) and os.path.getsize(target) > 0:
+            return target
+
+        # yt-dlp may choose a different extension; find the newest file.
+        prefix = os.path.join(DOWNLOAD_DIR, video_id + ".")
+        candidates = [
+            p for p in glob.glob(prefix + "*")
+            if os.path.isfile(p) and os.path.getsize(p) > 0
+            and not p.endswith(".part")
+        ]
+        if candidates:
+            return max(candidates, key=os.path.getmtime)
+    except Exception:
+        return None
+    return None
+
+
 async def download_song(
     link: str,
 ) -> Optional[str]:
 
-    return await _download_from_api(
+    link = normalize_youtube_url(link)
+    result = await _download_from_api(
         link,
         media_type="audio",
         extension="mp3",
         timeout_seconds=300,
+    )
+    if result:
+        return result
+    return await _download_with_ytdlp(
+        link,
+        media_type="audio",
+        extension="mp3",
     )
 
 
@@ -366,11 +437,19 @@ async def download_video(
     link: str,
 ) -> Optional[str]:
 
-    return await _download_from_api(
+    link = normalize_youtube_url(link)
+    result = await _download_from_api(
         link,
         media_type="video",
         extension="mp4",
         timeout_seconds=600,
+    )
+    if result:
+        return result
+    return await _download_with_ytdlp(
+        link,
+        media_type="video",
+        extension="mp4",
     )
 
 
