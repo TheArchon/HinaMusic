@@ -24,6 +24,40 @@ from AloneMusic.utils.thumbnails import get_thumb
 from config import BANNED_USERS
 
 
+async def _play_autoplay_next(_, chat_id, popped, old_mystic):
+    """Pick a playable related YouTube track and start it after /skip."""
+    if not popped or not await is_autoplay_on(chat_id):
+        return False
+    vidid = popped.get("vidid")
+    if not vidid:
+        return False
+    try:
+        related = await YouTube.get_related_videos(vidid, limit=10)
+    except Exception:
+        related = []
+    if not related:
+        return False
+    import random
+    candidates = list(related)
+    random.shuffle(candidates)
+    from AloneMusic.utils.stream.stream import stream
+    for video_id in candidates:
+        try:
+            details, track_id = await YouTube.track(video_id, True)
+            if not details or not details.get("title"):
+                continue
+            await stream(
+                _, old_mystic, popped.get("user_id"), details, chat_id,
+                popped.get("by"), popped.get("chat_id", chat_id),
+                video=True if popped.get("streamtype") == "video" else False,
+                streamtype="youtube", forceplay=True,
+            )
+            return True
+        except Exception:
+            continue
+    return False
+
+
 @app.on_message(
     filters.command(["skip", "cskip", "next", "cnext"]) & filters.group & ~BANNED_USERS
 )
@@ -52,33 +86,9 @@ async def skip(cli, message: Message, _, chat_id):
                             if popped:
                                 await auto_clean(popped)
                             if not check:
-                                if await is_autoplay_on(chat_id):
-                                    try:
-                                        vidid = popped["vidid"]
-                                        related = await YouTube.get_related_videos(vidid)
-                                        if not related:
-                                            raise Exception("no related")
-                                        import random
-                                        video_id = random.choice(related)
-                                        details, track_id = await YouTube.track(video_id, True)
-                                        if not details.get("title"):
-                                            raise Exception("no track details")
-                                        from AloneMusic.utils.stream.stream import stream
-                                        await stream(
-                                            _,
-                                            old_mystic,
-                                            popped["user_id"],
-                                            details,
-                                            chat_id,
-                                            popped["by"],
-                                            popped["chat_id"],
-                                            video=True if popped["streamtype"] == "video" else False,
-                                            streamtype="youtube",
-                                            forceplay=True,
-                                        )
-                                        return
-                                    except:
-                                        pass
+                                if await _play_autoplay_next(_, chat_id, popped, old_mystic):
+
+                                    return
                                 try:
                                     await message.reply_text(
                                         text=_["admin_6"].format(
@@ -108,19 +118,19 @@ async def skip(cli, message: Message, _, chat_id):
             if popped:
                 await auto_clean(popped)
             if not check:
-                if await is_autoplay_on(chat_id) and await Alone.autoplay_next(chat_id, popped):
-                    check = db.get(chat_id)
-                else:
-                    await message.reply_text(
-                        text=_["admin_6"].format(
-                            message.from_user.mention, message.chat.title
-                        ),
-                        reply_markup=close_markup(_),
-                    )
-                    try:
-                        return await Alone.stop_stream(chat_id)
-                    except:
-                        return
+                if await _play_autoplay_next(_, chat_id, popped, old_mystic):
+
+                    return
+                await message.reply_text(
+                    text=_["admin_6"].format(
+                        message.from_user.mention, message.chat.title
+                    ),
+                    reply_markup=close_markup(_),
+                )
+                try:
+                    return await Alone.stop_stream(chat_id)
+                except:
+                    return
         except:
             try:
                 await message.reply_text(
@@ -278,3 +288,4 @@ async def skip(cli, message: Message, _, chat_id):
             run = await update_stream_ui(chat_id, message.chat.id, None, img, caption, button)
             db[chat_id][0]["mystic"] = run
             db[chat_id][0]["markup"] = "stream"
+      
