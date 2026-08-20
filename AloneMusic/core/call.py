@@ -265,39 +265,22 @@ class Call(PyTgCalls):
                     vs = 1.0
 
                 try:
-                    # Audio files do not have a video stream. Applying
-                    # -filter:v to MP3 causes ffmpeg to fail, which made
-                    # /speed appear to do nothing. Build the filter chain
-                    # according to the actual stream type.
-                    import shlex
-                    src_q = shlex.quote(str(file_path))
-                    out_q = shlex.quote(str(out))
-
-                    if playing[0].get("streamtype") == "video":
-                        vf = f"-filter:v setpts={vs}*PTS"
-                    else:
-                        vf = "-vn"
-
-                    cmd = (
-                        f"ffmpeg -y -i {src_q} "
-                        f"{vf} -filter:a atempo={speed} "
-                        f"{out_q}"
-                    )
-
                     proc = await asyncio.create_subprocess_shell(
-                        cmd=cmd,
+                        cmd=(
+                            "ffmpeg "
+                            "-i "
+                            f"{file_path} "
+                            "-filter:v "
+                            f"setpts={vs}*PTS "
+                            "-filter:a "
+                            f"atempo={speed} "
+                            f"{out}"
+                        ),
                         stdin=asyncio.subprocess.PIPE,
-                        stdout=asyncio.subprocess.DEVNULL,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    _, stderr = await proc.communicate()
-                    if proc.returncode != 0:
-                        try:
-                            if os.path.isfile(out):
-                                os.remove(out)
-                        except Exception:
-                            pass
-                except Exception:
+                    await proc.communicate()
+                except:
                     pass
         else:
             out = file_path
@@ -650,50 +633,51 @@ class Call(PyTgCalls):
             # -------------------------------
             # AUTOPLAY
             # -------------------------------
-            if not check and popped and await is_autoplay_on(chat_id):
-                # Keep autoplay self-contained: find a related YouTube video,
-                # resolve its metadata, then put it at the front of the queue.
-                # If one candidate fails, try another instead of silently
-                # ending playback.
-                try:
-                    vidid = popped.get("vidid")
-                    related = await YouTube.get_related_videos(vidid, 12)
+            if not check:
+                if await is_autoplay_on(chat_id):
+                    try:
+                        vidid = popped["vidid"]
 
-                    if related:
-                        random.shuffle(related)
-                        for video_id in related:
-                            try:
-                                details, track_id = await YouTube.track(
-                                    video_id, True
-                                )
-                                if not details or not details.get("title"):
-                                    continue
-                                if not details.get("vidid"):
-                                    continue
-                                if not details.get("duration_min"):
-                                    details["duration_min"] = "0:00"
+                        related = await YouTube.get_related_videos(
+                            vidid
+                        )
 
-                                from AloneMusic.utils.stream.queue import put_queue
+                        if not related:
+                            return await _clear_(chat_id)
 
-                                await put_queue(
-                                    chat_id,
-                                    popped["chat_id"],
-                                    f"vid_{video_id}",
-                                    details["title"],
-                                    details["duration_min"],
-                                    popped["by"],
-                                    video_id,
-                                    popped["user_id"],
-                                    popped.get("streamtype", "audio"),
-                                    forceplay=True,
-                                )
-                                check = db.get(chat_id)
-                                if check:
-                                    break
-                            except Exception:
-                                continue
-                except Exception:
-                    pass
+                        video_id = random.choice(related)
+
+                        try:
+                            details, track_id = await YouTube.track(
+                                video_id,
+                                True,
+                            )
+
+                            if not details.get("title"):
+                                raise Exception("no details")
+
+                        except:
+                            raise Exception("fetch fail")
+
+                        from AloneMusic.utils.stream.queue import put_queue
+
+                        await put_queue(
+                            chat_id,
+                            popped["chat_id"],
+                            f"vid_{video_id}",
+                            details["title"],
+                            details["duration_min"],
+                            popped["by"],
+                            video_id,
+                            popped["user_id"],
+                            popped["streamtype"],
+                            forceplay=True,
+                        )
+
+                        check = db.get(chat_id)
+
+                    except:
+                        pass
 
                 # --------------------------------
                 # QUEUE FINISHED
@@ -1126,18 +1110,21 @@ class Call(PyTgCalls):
                 _client=client,
             ):
                 if isinstance(update, types.StreamEnded):
-                    # PyTgCalls may report the end of a media stream as
-                    # AUDIO or VIDEO. Autoplay must run for both; otherwise
-                    # video-mode songs can stop without advancing.
-                    try:
-                        await self.change_stream(
-                            _client,
-                            update.chat_id,
-                        )
-                    except Exception as e:
-                        LOGGER.error(
-                            f"Autoplay stream-end handler failed for {update.chat_id}: {e}"
-                        )
+                    # PyTgCalls can report the end of an audio OR video
+                    # stream.  Autoplay must advance for both types.
+                    if update.stream_type in (
+                        types.StreamEnded.Type.AUDIO,
+                        types.StreamEnded.Type.VIDEO,
+                    ):
+                        try:
+                            await self.change_stream(
+                                _client,
+                                update.chat_id,
+                            )
+                        except Exception as e:
+                            LOGGER(__name__).error(
+                                f"Autoplay change_stream failed for {update.chat_id}: {e}"
+                            )
 
                 elif isinstance(update, types.ChatUpdate):
                     if update.status in [
@@ -1151,4 +1138,3 @@ class Call(PyTgCalls):
 
 
 Alone = Call()
-        
