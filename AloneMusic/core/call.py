@@ -633,51 +633,44 @@ class Call(PyTgCalls):
             # -------------------------------
             # AUTOPLAY
             # -------------------------------
-            if not check:
-                if await is_autoplay_on(chat_id):
-                    try:
-                        vidid = popped["vidid"]
-
-                        related = await YouTube.get_related_videos(
-                            vidid
-                        )
-
-                        if not related:
-                            return await _clear_(chat_id)
-
-                        video_id = random.choice(related)
-
-                        try:
-                            details, track_id = await YouTube.track(
-                                video_id,
-                                True,
-                            )
-
-                            if not details.get("title"):
-                                raise Exception("no details")
-
-                        except:
-                            raise Exception("fetch fail")
-
+            if not check and await is_autoplay_on(chat_id):
+                try:
+                    current_id = popped.get("vidid") if popped else None
+                    related = await YouTube.get_related_videos(current_id)
+                    if related:
                         from AloneMusic.utils.stream.queue import put_queue
 
-                        await put_queue(
-                            chat_id,
-                            popped["chat_id"],
-                            f"vid_{video_id}",
-                            details["title"],
-                            details["duration_min"],
-                            popped["by"],
-                            video_id,
-                            popped["user_id"],
-                            popped["streamtype"],
-                            forceplay=True,
-                        )
-
-                        check = db.get(chat_id)
-
-                    except:
-                        pass
+                        # Try several candidates. One bad/deleted YouTube result
+                        # must not permanently stop autoplay.
+                        for video_id in related:
+                            if not video_id or str(video_id) == str(current_id):
+                                continue
+                            try:
+                                details, track_id = await YouTube.track(
+                                    video_id, True
+                                )
+                                if not details or not details.get("title"):
+                                    continue
+                                duration = details.get("duration_min") or "0:00"
+                                await put_queue(
+                                    chat_id,
+                                    popped["chat_id"],
+                                    f"vid_{track_id or video_id}",
+                                    details["title"],
+                                    duration,
+                                    popped["by"],
+                                    track_id or video_id,
+                                    popped["user_id"],
+                                    popped["streamtype"],
+                                    forceplay=True,
+                                )
+                                check = db.get(chat_id)
+                                if check:
+                                    break
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
 
                 # --------------------------------
                 # QUEUE FINISHED
@@ -1110,21 +1103,18 @@ class Call(PyTgCalls):
                 _client=client,
             ):
                 if isinstance(update, types.StreamEnded):
-                    # PyTgCalls can report the end of an audio OR video
-                    # stream.  Autoplay must advance for both types.
-                    if update.stream_type in (
-                        types.StreamEnded.Type.AUDIO,
-                        types.StreamEnded.Type.VIDEO,
-                    ):
-                        try:
-                            await self.change_stream(
-                                _client,
-                                update.chat_id,
-                            )
-                        except Exception as e:
-                            LOGGER(__name__).error(
-                                f"Autoplay change_stream failed for {update.chat_id}: {e}"
-                            )
+                    # Every finished media item must advance the queue.
+                    # The old code handled AUDIO only, so VIDEO playback
+                    # could stop after one track and autoplay never fired.
+                    try:
+                        await self.change_stream(
+                            _client,
+                            update.chat_id,
+                        )
+                    except Exception as e:
+                        LOGGER(__name__).error(
+                            f"Autoplay change_stream failed for {update.chat_id}: {e}"
+                        )
 
                 elif isinstance(update, types.ChatUpdate):
                     if update.status in [
