@@ -7,6 +7,7 @@
 #
 # All rights reserved.
 
+import logging
 import os
 from random import randint
 from typing import Union
@@ -25,6 +26,8 @@ from AloneMusic.utils.inline import aq_markup, close_markup, stream_markup
 from AloneMusic.utils.pastebin import AloneBin
 from AloneMusic.utils.stream.queue import put_queue, put_queue_index
 from AloneMusic.utils.thumbnails import get_thumb
+
+logger = logging.getLogger(__name__)
 
 
 async def update_stream_ui(
@@ -46,8 +49,8 @@ async def update_stream_ui(
             except Exception:
                 try:
                     await mystic.delete()
-                except:
-                    pass
+                except Exception:
+                    logger.exception("update_stream_ui: failed to delete mystic for chat %s", chat_id)
         return await app.send_photo(
             original_chat_id,
             photo=img,
@@ -74,8 +77,8 @@ async def update_stream_ui(
                 except Exception:
                     try:
                         await mystic.delete()
-                    except:
-                        pass
+                    except Exception:
+                        logger.exception("update_stream_ui: failed to delete mystic after edit failures for chat %s", chat_id)
         return await app.send_message(
             original_chat_id,
             text=caption,
@@ -104,7 +107,7 @@ async def update_queue_ui(
                         reply_markup=InlineKeyboardMarkup(button),
                     )
                 except Exception:
-                    pass
+                    logger.exception("update_queue_ui: failed to edit mystic for chat %s", chat_id)
         else:
             try:
                 await mystic.edit_text(
@@ -118,7 +121,7 @@ async def update_queue_ui(
                         reply_markup=InlineKeyboardMarkup(button),
                     )
                 except Exception:
-                    pass
+                    logger.exception("update_queue_ui: failed to edit mystic for chat %s", chat_id)
     else:
         await app.send_message(
             chat_id=original_chat_id,
@@ -148,8 +151,8 @@ async def stream(
         msg = f"{_['play_19']}\n\n"
         count = 0
         for search in result:
-            if int(count) == config.PLAYLIST_FETCH_LIMIT:
-                continue
+            if count >= config.PLAYLIST_FETCH_LIMIT:
+                break
             try:
                 (
                     title,
@@ -158,7 +161,8 @@ async def stream(
                     thumbnail,
                     vidid,
                 ) = await YouTube.details(search, False if spotify else True)
-            except:
+            except Exception as e:
+                logger.exception("playlist: failed to fetch details for %s: %s", search, e)
                 continue
             if str(duration_min) == "None":
                 continue
@@ -178,7 +182,7 @@ async def stream(
                     mystic=mystic,
                 )
                 position = len(db.get(chat_id)) - 1
-                count += 1
+n                count += 1
                 msg += f"{count}. {title[:70]}\n"
                 msg += f"{_['play_20']} {position}\n\n"
             else:
@@ -189,7 +193,8 @@ async def stream(
                     file_path, direct = await YouTube.download(
                         vidid, mystic, video=status, videoid=True
                     )
-                except:
+                except Exception as e:
+                    logger.exception("playlist: download failed for %s: %s", vidid, e)
                     raise AssistantErr(_["play_14"])
                 await Alone.join_call(
                     chat_id,
@@ -256,7 +261,7 @@ async def stream(
                 vidid, mystic, videoid=True, video=status
             )
         except Exception as ex:
-            print(ex)
+            logger.exception("youtube: download failed for %s: %s", vidid, ex)
             raise AssistantErr(_["play_14"])
         if await is_active_chat(chat_id):
             await put_queue(
