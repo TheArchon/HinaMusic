@@ -51,7 +51,7 @@ except ImportError:
         if not time_str:
             return 0
         try:
-            parts = list(map(int, time_str.split(":")))
+            parts = list(map(int, time_str.split("."))) if "." in time_str else list(map(int, time_str.split(":")))
             if len(parts) == 3:
                 return parts[0] * 3600 + parts[1] * 60 + parts[2]
             elif len(parts) == 2:
@@ -61,6 +61,10 @@ except ImportError:
         except Exception:
             pass
         return 0
+
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 # --- Original Local Helper Functions (Preserved for compatibility and fallback) ---
@@ -196,7 +200,7 @@ class YouTubeAPI:
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            logging.warning(f"Error fetching details from API: {e}")
+            logger.exception("Error fetching details from API for %s: %s", link, e)
         return None
 
     async def details(self, link: str, videoid: Union[bool, str] = None):
@@ -230,7 +234,7 @@ class YouTubeAPI:
                     duration_sec = int(time_to_seconds(duration_min)) if duration_min and duration_min != "None" else 0
                     return title, duration_min, duration_sec, thumbnail, vidid
             except Exception as e:
-                logging.warning(f"Local VideosSearch fallback failed in details: {e}")
+                logger.exception("Local VideosSearch fallback failed in details for %s: %s", link, e)
         return None, None, 0, None, None
 
     async def title(self, link: str, videoid: Union[bool, str] = None):
@@ -252,7 +256,7 @@ class YouTubeAPI:
                 if res and res.get("result"):
                     return res["result"][0]["title"]
             except Exception as e:
-                logging.warning(f"Local VideosSearch fallback failed in title: {e}")
+                logger.exception("Local VideosSearch fallback failed in title for %s: %s", link, e)
         return None
 
     async def duration(self, link: str, videoid: Union[bool, str] = None):
@@ -274,7 +278,7 @@ class YouTubeAPI:
                 if res and res.get("result"):
                     return res["result"][0]["duration"]
             except Exception as e:
-                logging.warning(f"Local VideosSearch fallback failed in duration: {e}")
+                logger.exception("Local VideosSearch fallback failed in duration for %s: %s", link, e)
         return None
 
     async def thumbnail(self, link: str, videoid: Union[bool, str] = None):
@@ -296,7 +300,7 @@ class YouTubeAPI:
                 if res and res.get("result"):
                     return res["result"][0]["thumbnails"][0]["url"].split("?")[0]
             except Exception as e:
-                logging.warning(f"Local VideosSearch fallback failed in thumbnail: {e}")
+                logger.exception("Local VideosSearch fallback failed in thumbnail for %s: %s", link, e)
         return None
 
     async def video(self, link: str, videoid: Union[bool, str] = None):
@@ -314,7 +318,7 @@ class YouTubeAPI:
             if res and isinstance(res, tuple) and res[0]:
                 return 1, res[0]
         except Exception as e:
-            logging.warning(f"Downloading API video locally failed: {e}")
+            logger.exception("Downloading API video locally failed for %s: %s", link, e)
         
         # Fallback to local yt-dlp -g
         try:
@@ -348,12 +352,10 @@ class YouTubeAPI:
                 data = response.json()
                 return data.get("videos")
             else:
-                LOGGER(__name__).error(f"API Playlist Error ({response.status_code}): {response.text}")
+                logger.error(f"API Playlist Error ({response.status_code}): {response.text}")
         except Exception as e:
-            LOGGER(__name__).error(f"Error fetching playlist from API: {e}")
+            logger.exception("Error fetching playlist from API for %s: %s", link, e)
         return None
-
-
 
     async def track(self, link: str, videoid: Union[bool, str] = None):
         if videoid:
@@ -389,7 +391,7 @@ class YouTubeAPI:
                     }
                     return track_details, result["id"]
             except Exception as e:
-                logging.warning(f"Local track fallback failed: {e}")
+                logger.exception("Local track fallback failed for %s: %s", link, e)
         return None, None
 
     async def formats(self, link: str, videoid: Union[bool, str] = None):
@@ -412,7 +414,7 @@ class YouTubeAPI:
                         f["yturl"] = link
                     return formats, link
             except Exception as e:
-                logging.warning(f"Error fetching formats from API: {e}")
+                logger.exception("Error fetching formats from API for %s: %s", link, e)
 
         # Local formats extraction
         def _extract():
@@ -445,7 +447,7 @@ class YouTubeAPI:
                     continue
             return formats_available, link
         except Exception as e:
-            logging.warning(f"Formats extraction failed: {e}")
+            logger.exception("Formats extraction failed for %s: %s", link, e)
             return [], link
 
     async def slider(self, link: str, query_type: int, videoid: Union[bool, str] = None):
@@ -472,7 +474,7 @@ class YouTubeAPI:
                         thumbnail = target["thumbnails"][0]["url"].split("?")[0] if target.get("thumbnails") else None
                         return title, duration_min, thumbnail, vidid
             except Exception as e:
-                logging.warning(f"Error in slider/search from API: {e}")
+                logger.exception("Error in slider/search from API for %s: %s", link, e)
         
         # Fallback to local VideosSearch
         if VideosSearch:
@@ -487,7 +489,7 @@ class YouTubeAPI:
                     thumbnail = result[query_type]["thumbnails"][0]["url"].split("?")[0]
                     return title, duration_min, thumbnail, vidid
             except Exception as e:
-                logging.warning(f"Local slider fallback failed: {e}")
+                logger.exception("Local slider fallback failed for %s: %s", link, e)
         return None, None, None, None
 
     async def get_related_videos(self, vidid: str, limit: int = 10):
@@ -522,7 +524,7 @@ class YouTubeAPI:
                         if len(results) >= limit:
                             break
             except Exception as e:
-                logging.warning(f"Autoplay API search failed for {current_id}: {e}")
+                logger.exception("Autoplay API search failed for %s: %s", current_id, e)
 
         # Local fallback.
         if not results and VideosSearch:
@@ -536,7 +538,7 @@ class YouTubeAPI:
                     if len(results) >= limit:
                         break
             except Exception as e:
-                logging.warning(f"Autoplay local search failed for {current_id}: {e}")
+                logger.exception("Autoplay local search failed for %s: %s", current_id, e)
 
         # Last fallback: search by the current video's title.
         # This is deliberately independent from the related-video endpoint:
@@ -570,7 +572,7 @@ class YouTubeAPI:
                             if len(results) >= limit:
                                 break
             except Exception as e:
-                logging.warning(f"Autoplay title search failed for {current_id}: {e}")
+                logger.exception("Autoplay title search failed for %s: %s", current_id, e)
 
         # De-duplicate while preserving order.
         return list(dict.fromkeys(results))[:limit]
@@ -605,7 +607,7 @@ class YouTubeAPI:
             await client.get(f"{API_URL}/download", params=params)
             return True
         except Exception as e:
-            logging.warning(f"Prefetch failed for {link}: {e}")
+            logger.exception("Prefetch failed for %s: %s", link, e)
         return False
 
     async def prefetch_queue(self, queries: list, video: bool = False):
@@ -623,7 +625,7 @@ class YouTubeAPI:
             await client.post(f"{API_URL}/prefetch_bulk", json=payload, params=params)
             return True
         except Exception as e:
-            logging.warning(f"Bulk prefetch failed: {e}")
+            logger.exception("Bulk prefetch failed: %s", e)
         return False
 
     async def download(
@@ -660,7 +662,7 @@ class YouTubeAPI:
                                 f.write(chunk)
                 return os.path.exists(filepath) and os.path.getsize(filepath) > 0
             except Exception as e:
-                logging.warning(f"API download failed for {vidid_extracted}: {e}")
+                logger.exception("API download failed for %s: %s", vidid_extracted, e)
                 if os.path.exists(filepath):
                     try: os.remove(filepath)
                     except Exception: pass
@@ -799,11 +801,11 @@ class YouTubeAPI:
                 else:
                    file_size = await check_file_size(link)
                    if not file_size:
-                     print("None file Size")
+                     logger.warning("check_file_size returned None for %s", link)
                      return
                    total_size_mb = file_size / (1024 * 1024)
                    if total_size_mb > 250:
-                     print(f"File size {total_size_mb:.2f} MB exceeds the 100MB limit.")
+                     logger.warning("File size %.2f MB exceeds the allowed limit for %s", total_size_mb, link)
                      return None
                    direct = True
                    downloaded_file = await loop.run_in_executor(None, video_dl)
